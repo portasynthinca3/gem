@@ -44,12 +44,12 @@ void _machine_mem_wr(uint32_t addr, uint8_t val) {
 #ifdef TRACE_MEM_ACCESS
 uint8_t machine_mem_rd(uint32_t addr) {
     uint8_t val = _machine_mem_rd(addr);
-    ESP_LOGI(TAG, "trace: RD 0x%08x: %02x", addr, val);
+    ESP_LOGI(TAG, "trace: RD 0x%05x: %02x", addr, val);
     return val;
 }
 
 void machine_mem_wr(uint32_t addr, uint8_t val) {
-    ESP_LOGI(TAG, "trace: WR 0x%08x: %02x", addr, val);
+    ESP_LOGI(TAG, "trace: WR 0x%05x: %02x", addr, val);
     _machine_mem_wr(addr, val);
 }
 #endif

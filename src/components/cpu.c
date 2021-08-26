@@ -102,6 +102,10 @@ uint16_t _cpu_read16(uint32_t* addr) {
     val |= (uint16_t)READ((*addr)++) << 8;
     return val;
 }
+void _cpu_write16(uint32_t addr, uint16_t val) {
+    WRITE(addr, val & 0xff);
+    WRITE(addr + 1, val >> 8);
+}
 
 cpu_mem_oper_t _cpu_decode_far(uint32_t* addr) {
     uint16_t offs = _cpu_read16(addr);
@@ -211,6 +215,202 @@ void _cpu_decode_modrm(uint32_t* addr, uint8_t d, uint8_t w, cpu_operand_t* op1,
         *op1 = *op2;
         *op2 = temp;
     }
+}
+
+inline uint32_t _cpu_sreg_base(cpu_segm_override_t so) {
+    switch(so) {
+        case so_ds: return (uint32_t)regs.ds << 4;
+        case so_cs: return (uint32_t)regs.cs << 4;
+        case so_ss: return (uint32_t)regs.ss << 4;
+        case so_es: return (uint32_t)regs.es << 4;
+        default:
+            ESP_LOGE(TAG, "invalid segment override");
+            return 0;
+    }
+}
+inline uint16_t _cpu_index(cpu_mem_mode_t mode) {
+    switch(mode) {
+        case mm_zero:  return 0;
+        case mm_bp:    return regs.bp;
+        case mm_bp_di: return regs.bp + regs.di;
+        case mm_bp_si: return regs.bp + regs.si;
+        case mm_bx:    return regs.bx;
+        case mm_bx_di: return regs.bx + regs.di;
+        case mm_bx_si: return regs.bx + regs.si;
+        case mm_di:    return regs.di;
+        case mm_si:    return regs.si;
+        default:
+            ESP_LOGE(TAG, "invalid index mode");
+            return 0;
+    }
+}
+uint32_t _cpu_effective_addr(cpu_mem_oper_t op, cpu_segm_override_t so) {
+    switch(op.disp) {
+        case disp_abs: return _cpu_sreg_base(so) + op.disp16;
+        case disp_far: return ((uint32_t)op.far_segm << 4) + op.far_offs;
+        case disp_no:  return _cpu_sreg_base(so) + _cpu_index(op.mode);
+        case disp_8:   return _cpu_sreg_base(so) + _cpu_index(op.mode) + *(int8_t*)&op.disp8;
+        case disp_16:  return _cpu_sreg_base(so) + _cpu_index(op.mode) + *(int16_t*)&op.disp16;
+        default:
+            ESP_LOGE(TAG, "invalid displacement");
+            return 0;
+    }
+}
+
+int32_t _cpu_oprd8(cpu_operand_t op, cpu_segm_override_t so) {
+    switch(op.type) {
+        case operand_no:
+            ESP_LOGE(TAG, "tried to read non-existent operand");
+            return 0;
+        case operand_reg:
+            switch(op.reg) {
+                case reg_al: return regs.al;
+                case reg_bl: return regs.bl;
+                case reg_cl: return regs.cl;
+                case reg_dl: return regs.dl;
+                case reg_ah: return regs.ah;
+                case reg_bh: return regs.bh;
+                case reg_ch: return regs.ch;
+                case reg_dh: return regs.dh;
+                default:
+                    ESP_LOGE(TAG, "wrong register size");
+                    return 0;
+            }
+        case operand_imm8:
+            return op.imm8;
+        case operand_imm16:
+            ESP_LOGE(TAG, "wrong immediate size");
+            return 0;
+        case operand_mem8:
+            return READ(_cpu_effective_addr(op.mem, so));
+        case operand_mem16:
+            ESP_LOGE(TAG, "wrong memory size");
+            return 0;
+        default:
+            ESP_LOGE(TAG, "illegal operand type");
+            return 0;
+    }
+}
+int32_t _cpu_oprd16(cpu_operand_t op, cpu_segm_override_t so) {
+    switch(op.type) {
+        case operand_no:
+            ESP_LOGE(TAG, "tried to read non-existent operand");
+            return 0;
+        case operand_reg:
+            switch(op.reg) {
+                case reg_ax: return regs.ax;
+                case reg_bx: return regs.bx;
+                case reg_cx: return regs.cx;
+                case reg_dx: return regs.dx;
+                case reg_si: return regs.si;
+                case reg_di: return regs.di;
+                case reg_bp: return regs.bp;
+                case reg_sp: return regs.sp;
+                default:
+                    ESP_LOGE(TAG, "wrong register size");
+                    return 0;
+            }
+        case operand_imm8:
+            ESP_LOGE(TAG, "wrong immediate size");
+            return 0;
+        case operand_imm16:
+            return op.imm16;
+        case operand_mem8:
+            ESP_LOGE(TAG, "wrong memory size");
+            return 0;
+        case operand_mem16: {
+            uint32_t addr = _cpu_effective_addr(op.mem, so);
+            return _cpu_read16(&addr);
+        }
+        default:
+            ESP_LOGE(TAG, "illegal operand type");
+            return 0;
+    }
+}
+int32_t _cpu_opwr8(cpu_operand_t op, cpu_segm_override_t so, int32_t val) {
+    switch(op.type) {
+        case operand_no:
+            ESP_LOGE(TAG, "tried to write to non-existent operand");
+            return 0;
+        case operand_reg:
+            switch(op.reg) {
+                case reg_al: return regs.al = val;
+                case reg_bl: return regs.bl = val;
+                case reg_cl: return regs.cl = val;
+                case reg_dl: return regs.dl = val;
+                case reg_ah: return regs.ah = val;
+                case reg_bh: return regs.bh = val;
+                case reg_ch: return regs.ch = val;
+                case reg_dh: return regs.dh = val;
+                default:
+                    ESP_LOGE(TAG, "wrong register size");
+                    return 0;
+            }
+        case operand_imm8:
+        case operand_imm16:
+            ESP_LOGE(TAG, "tried to write to immediate");
+            return 0;
+        case operand_mem8:
+            WRITE(_cpu_effective_addr(op.mem, so), val);
+            return val;
+        case operand_mem16:
+            ESP_LOGE(TAG, "wrong memory size");
+            return 0;
+        default:
+            ESP_LOGE(TAG, "illegal operand type");
+            return 0;
+    }
+}
+int32_t _cpu_opwr16(cpu_operand_t op, cpu_segm_override_t so, int32_t val) {
+    switch(op.type) {
+        case operand_no:
+            ESP_LOGE(TAG, "tried to read non-existent operand");
+            return 0;
+        case operand_reg:
+            switch(op.reg) {
+                case reg_ax: return regs.ax = val;
+                case reg_bx: return regs.bx = val;
+                case reg_cx: return regs.cx = val;
+                case reg_dx: return regs.dx = val;
+                case reg_si: return regs.si = val;
+                case reg_di: return regs.di = val;
+                case reg_bp: return regs.bp = val;
+                case reg_sp: return regs.sp = val;
+                default:
+                    ESP_LOGE(TAG, "wrong register size");
+                    return 0;
+            }
+        case operand_imm8:
+        case operand_imm16:
+            ESP_LOGE(TAG, "tried to write to immediate");
+            return 0;
+        case operand_mem8:
+            ESP_LOGE(TAG, "wrong memory size");
+            return 0;
+        case operand_mem16:
+            _cpu_write16(_cpu_effective_addr(op.mem, so), val);
+            return val;
+        default:
+            ESP_LOGE(TAG, "illegal operand type");
+            return 0;
+    }
+}
+
+inline uint8_t _cpu_parity(uint8_t w, uint32_t val) {
+    uint8_t ones = 0;
+    for(int i = 0; i < (w ? 16 : 8); i++) {
+        if(val & 1) ones++;
+        val >>= 1;
+    }
+    return ones % 2;
+}
+inline void _cpu_set_fl(uint8_t w, int32_t result) {
+    WRITE_FLAG(FLAG_OF, w ? (result != *(int16_t*)&result) : (result != *(int8_t*)&result));
+    WRITE_FLAG(FLAG_SF, result < 0);
+    WRITE_FLAG(FLAG_ZF, result == 0);
+    // TODO: FLAG_AF
+    WRITE_FLAG(FLAG_CF, w ? (result & 0x10000) : (result & 0x100));
+    WRITE_FLAG(FLAG_PF, _cpu_parity(w, *(uint32_t*)&result));
 }
 
 // Public functions
@@ -935,12 +1135,51 @@ void cpu_disasm(uint32_t addr, int32_t len) {
         cpu_instr_t instr = cpu_fetch_decode(addr);
         cpu_instr_sprint(instr, buf);
         _cpu_byte_sprint(addr, instr.length, buf2);
-        ESP_LOGI("8086-disasm", "%06x: %18s %s", addr, buf2, buf);
+        ESP_LOGI("8086-disasm", "%05x: %18s %s", addr, buf2, buf);
         addr += instr.length;
         len -= instr.length;
     }
 }
 
+inline void _cpu_execute_jump(cpu_instr_t instr) {
+    // see if we need to jump
+    uint8_t condition_met;
+    switch(instr.mnemonic) {
+        case mnem_jmp:  condition_met = 1; break;
+        case mnem_jo:   condition_met = READ_FLAG(FLAG_OF); break;
+        case mnem_jno:  condition_met = !READ_FLAG(FLAG_OF); break;
+        case mnem_jc:   condition_met = READ_FLAG(FLAG_CF); break;
+        case mnem_jnc:  condition_met = !READ_FLAG(FLAG_CF); break;
+        case mnem_jz:   condition_met = READ_FLAG(FLAG_ZF); break;
+        case mnem_jnz:  condition_met = !READ_FLAG(FLAG_ZF); break;
+        case mnem_jbe:  condition_met = READ_FLAG(FLAG_CF) || READ_FLAG(FLAG_ZF); break;
+        case mnem_ja:   condition_met = !READ_FLAG(FLAG_CF) & !READ_FLAG(FLAG_ZF); break;
+        case mnem_js:   condition_met = READ_FLAG(FLAG_SF); break;
+        case mnem_jns:  condition_met = !READ_FLAG(FLAG_SF); break;
+        case mnem_jp:   condition_met = READ_FLAG(FLAG_PF); break;
+        case mnem_jnp:  condition_met = !READ_FLAG(FLAG_PF); break;
+        case mnem_jl:   condition_met = READ_FLAG(FLAG_SF) != READ_FLAG(FLAG_OF); break;
+        case mnem_jge:  condition_met = READ_FLAG(FLAG_SF) == READ_FLAG(FLAG_OF); break;
+        case mnem_jle:  condition_met = (READ_FLAG(FLAG_SF) != READ_FLAG(FLAG_OF)) || READ_FLAG(FLAG_ZF); break;
+        case mnem_jg:   condition_met = (READ_FLAG(FLAG_SF) == READ_FLAG(FLAG_OF)) && !READ_FLAG(FLAG_ZF); break;
+        default:
+            ESP_LOGE(TAG, "invalid jump instruction");
+            return;
+    }
+    if(!condition_met) {
+        regs.ip += instr.length;
+        return;
+    }
+    // perform the jump
+    if(instr.oper1.type == operand_imm8) // rel8
+        regs.ip += instr.length + *(int8_t*)&instr.oper1.imm8;
+    else if(instr.oper1.type == operand_imm16) // rel16
+        regs.ip += instr.length + *(int16_t*)&instr.oper1.imm16;
+    else if(instr.oper1.type == operand_mem8) { // segm16:offs16
+        regs.cs = instr.oper1.mem.far_segm;
+        regs.ip = instr.oper1.mem.far_offs;
+    }
+}
 void cpu_run(void) {
     // fetch instruction
     cpu_instr_t instr = cpu_fetch_decode((uint32_t)regs.cs << 4 | regs.ip);
@@ -951,21 +1190,137 @@ void cpu_run(void) {
     ESP_LOGI(TAG, "decoded[%04x:%04x]: %s", regs.cs, regs.ip, buf);
     #endif
 
+    // macros
+    #define RDOP_8(o)     _cpu_oprd8 ((o == 2) ? instr.oper2 : instr.oper1, instr.so)
+    #define RDOP_16(o)    _cpu_oprd16((o == 2) ? instr.oper2 : instr.oper1, instr.so)
+    #define WROP_8(o, v)  _cpu_opwr8 ((o == 2) ? instr.oper2 : instr.oper1, instr.so, v)
+    #define WROP_16(o, v) _cpu_opwr16((o == 2) ? instr.oper2 : instr.oper1, instr.so, v)
+
+    // determine bit size
+    uint8_t op1w = instr.oper1.type == operand_imm16 || instr.oper1.type == operand_mem16;
+    uint8_t op2w = instr.oper2.type == operand_imm16 || instr.oper2.type == operand_mem16;
+    if(instr.oper2.type != operand_no && op1w != op2w)
+        ESP_LOGE(TAG, "operand 1 width != operand 2 width");
+    uint8_t w = op1w || op2w;
+
+    // execute instruction
+    // (another 500-line switch incoming!!!!!!)
     switch(instr.mnemonic) {
         case mnem_jmp:
-            if(instr.oper1.type == operand_imm8) // jmp rel8
-                regs.ip += instr.length + *(int8_t*)&instr.oper1.imm8;
-            else if(instr.oper1.type == operand_imm16) // jmp rel16
-                regs.ip += instr.length + *(int16_t*)&instr.oper1.imm16;
-            else if(instr.oper1.type == operand_mem8) { // jmp segm16:offs16
-                regs.cs = instr.oper1.mem.far_segm;
-                regs.ip = instr.oper1.mem.far_offs;
-            } 
+        case mnem_jo:
+        case mnem_jno:
+        case mnem_jc:
+        case mnem_jnc:
+        case mnem_jz:
+        case mnem_jnz:
+        case mnem_jbe:
+        case mnem_ja:
+        case mnem_js:
+        case mnem_jns:
+        case mnem_jp:
+        case mnem_jnp:
+        case mnem_jl:
+        case mnem_jge:
+        case mnem_jle:
+        case mnem_jg:
+            _cpu_execute_jump(instr);
             return;
 
+        case mnem_cli: WRITE_FLAG(FLAG_IF, 0); break;
+        case mnem_sti: WRITE_FLAG(FLAG_IF, 1); break;
+        case mnem_clc: WRITE_FLAG(FLAG_CF, 0); break;
+        case mnem_stc: WRITE_FLAG(FLAG_CF, 1); break;
+        case mnem_cmc: WRITE_FLAG(FLAG_CF, !READ_FLAG(FLAG_CF)); break;
+        case mnem_cld: WRITE_FLAG(FLAG_DF, 0); break;
+        case mnem_std: WRITE_FLAG(FLAG_DF, 1); break;
+
+        case mnem_aaa:
+            if((regs.al & 4) > 9 || READ_FLAG(FLAG_AF)) {
+                regs.al += 6;
+                regs.ah++;
+                WRITE_FLAG(FLAG_AF, 1);
+                WRITE_FLAG(FLAG_CF, 1);
+            } else {
+                WRITE_FLAG(FLAG_AF, 0);
+                WRITE_FLAG(FLAG_CF, 0);
+            }
+            break;
+        case mnem_aad:
+            regs.al = (regs.ah * 10) + regs.al;
+            regs.ah = 0;
+            break;
+        case mnem_aam:
+            regs.ah = regs.al / 10;
+            regs.al = regs.al % 10;
+            break;
+        case mnem_aas:
+            if((regs.al & 4) > 9 || READ_FLAG(FLAG_AF)) {
+                regs.al -= 6;
+                regs.ah--;
+                WRITE_FLAG(FLAG_AF, 1);
+                WRITE_FLAG(FLAG_CF, 1);
+            } else {
+                WRITE_FLAG(FLAG_AF, 0);
+                WRITE_FLAG(FLAG_CF, 0);
+            }
+            break;
+
+        case mnem_adc:
+            if(w) _cpu_set_fl(w, WROP_16(1, RDOP_16(1) + RDOP_16(2) + READ_FLAG(FLAG_CF)));
+            else  _cpu_set_fl(w, WROP_8(1, RDOP_8(1) + RDOP_8(2) + READ_FLAG(FLAG_CF)));
+            break;
+        case mnem_add:
+            if(w) _cpu_set_fl(w, WROP_16(1, RDOP_16(1) + RDOP_16(2)));
+            else  _cpu_set_fl(w, WROP_8(1, RDOP_8(1) + RDOP_8(2)));
+            break;
+        case mnem_sbb:
+            if(w) _cpu_set_fl(w, WROP_16(1, RDOP_16(1) - RDOP_16(2) - READ_FLAG(FLAG_CF)));
+            else  _cpu_set_fl(w, WROP_8(1, RDOP_8(1) - RDOP_8(2) - READ_FLAG(FLAG_CF)));
+            break;
+        case mnem_sub:
+            if(w) _cpu_set_fl(w, WROP_16(1, RDOP_16(1) - RDOP_16(2)));
+            else  _cpu_set_fl(w, WROP_8(1, RDOP_8(1) - RDOP_8(2)));
+            break;
+        case mnem_and:
+            if(w) _cpu_set_fl(w, WROP_16(1, RDOP_16(1) & RDOP_16(2)));
+            else  _cpu_set_fl(w, WROP_8(1, RDOP_8(1) & RDOP_8(2)));
+            WRITE_FLAG(FLAG_OF, 0);
+            WRITE_FLAG(FLAG_CF, 0);
+            break;
+        case mnem_or:
+            if(w) _cpu_set_fl(w, WROP_16(1, RDOP_16(1) | RDOP_16(2)));
+            else  _cpu_set_fl(w, WROP_8(1, RDOP_8(1) | RDOP_8(2)));
+            WRITE_FLAG(FLAG_OF, 0);
+            WRITE_FLAG(FLAG_CF, 0);
+            break;
+        case mnem_xor:
+            if(w) _cpu_set_fl(w, WROP_16(1, RDOP_16(1) ^ RDOP_16(2)));
+            else  _cpu_set_fl(w, WROP_8(1, RDOP_8(1) ^ RDOP_8(2)));
+            WRITE_FLAG(FLAG_OF, 0);
+            WRITE_FLAG(FLAG_CF, 0);
+            break;
+
+        case mnem_lahf:
+            regs.ah = regs.flags & 0xff;
+            break;
+        case mnem_sahf:
+            regs.flags &= 0xff00;
+            regs.flags |= regs.ah;
+            break;
+
+        case mnem_mov:
+            if(w) WROP_16(1, RDOP_16(2));
+            else  WROP_8(1, RDOP_8(2));
+            break;
+
         default:
-            ESP_LOGE(TAG, "%s instruction not implemented!", instr_names[instr.mnemonic]);
+            ESP_LOGE(TAG, "%s is not implemented", instr_names[instr.mnemonic]);
     }
+
+    #undef RDOP_8
+    #undef RDOP_16
+    #undef WROP_8
+    #undef RDOP_16
 
     regs.ip += instr.length;
 }

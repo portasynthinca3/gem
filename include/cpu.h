@@ -13,6 +13,9 @@
 #define IMM8_OPERAND(v)  ((cpu_operand_t){.type = operand_imm8,  .imm8 = v})
 #define IMM16_OPERAND(v) ((cpu_operand_t){.type = operand_imm16, .imm16 = v})
 
+#define READ_FLAG(f)     ((regs.flags >> (f)) & 1)
+#define WRITE_FLAG(f, v) (regs.flags = (regs.flags & ~(1 << (f))) | (((v) ? 1 : 0) << (f)))
+
 // Instruction mnemoncs
 typedef enum {
     mnem_aaa,   mnem_aad,   mnem_aam,   mnem_aas,   mnem_adc,  mnem_add,   mnem_and,
@@ -111,7 +114,30 @@ typedef struct {
 #define FLAG_DF 10
 #define FLAG_OF 11
 typedef struct {
-    uint16_t ax, bx, cx, dx;
+    union {
+        uint16_t ax;
+        struct __attribute__((packed)) {
+            uint8_t al, ah;
+        };
+    };
+    union {
+        uint16_t bx;
+        struct __attribute__((packed)) {
+            uint8_t bl, bh;
+        };
+    };
+    union {
+        uint16_t cx;
+        struct __attribute__((packed)) {
+            uint8_t cl, ch;
+        };
+    };
+    union {
+        uint16_t dx;
+        struct __attribute__((packed)) {
+            uint8_t dl, dh;
+        };
+    };
     uint16_t si, di, bp, sp;
     uint16_t cs, ds, es, ss;
     uint16_t ip;
