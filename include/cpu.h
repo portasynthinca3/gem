@@ -16,6 +16,8 @@
 #define READ_FLAG(f)     ((regs.flags >> (f)) & 1)
 #define WRITE_FLAG(f, v) (regs.flags = (regs.flags & ~(1 << (f))) | (((v) ? 1 : 0) << (f)))
 
+#define W_BITS(w) (w ? 16 : 8)
+
 // Instruction mnemoncs
 typedef enum {
     mnem_aaa,   mnem_aad,   mnem_aam,   mnem_aas,   mnem_adc,  mnem_add,   mnem_and,
@@ -28,10 +30,10 @@ typedef enum {
     mnem_les,   mnem_lodsb, mnem_lodsw, mnem_loop,  mnem_mov,  mnem_movsb, mnem_movsw,
     mnem_mul,   mnem_neg,   mnem_nop,   mnem_or,    mnem_out,  mnem_pop,   mnem_popa,
     mnem_popf,  mnem_push,  mnem_pusha, mnem_pushf, mnem_rcl,  mnem_rcr,   mnem_ret,
-    mnem_retf,  mnem_rol,   mnem_ror,   mnem_sahf,  mnem_sal,  mnem_sar,   mnem_sbb,
+    mnem_retf,  mnem_rol,   mnem_ror,   mnem_sahf,  mnem_not,  mnem_sar,   mnem_sbb,
     mnem_scasb, mnem_scasw, mnem_shl,   mnem_shr,   mnem_stc,  mnem_std,   mnem_sti,
     mnem_stosb, mnem_stosw, mnem_sub,   mnem_test,  mnem_xchg, mnem_xlatb, mnem_xor,
-    mnem_wait,  mnem_jcxz,  mnem_jmp,   mnem_hlt,   mnem_not
+    mnem_wait,  mnem_jcxz,  mnem_jmp,   mnem_hlt
 } cpu_mnem_t;
 
 // Instruction operands
@@ -144,6 +146,11 @@ typedef struct {
     uint16_t flags;
 } cpu_regs_t;
 
+// Private functions
+
+uint16_t _cpu_read16 (uint32_t* addr);
+void     _cpu_write16(uint32_t addr, uint16_t val);
+
 // Public functions
 
 void cpu_reset(void);
@@ -152,3 +159,4 @@ void cpu_run  (void);
 cpu_instr_t cpu_fetch_decode(uint32_t addr);
 void        cpu_instr_sprint(cpu_instr_t instr, char* buf);
 void        cpu_disasm      (uint32_t start, int32_t len);
+void        cpu_print_state (void);
