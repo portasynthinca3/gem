@@ -1,0 +1,18 @@
+{
+    "files.associations": {
+        "*.fsh": "glsl",
+        "*.asm": "nasm",
+        "freertos.h": "c",
+        "cpu.h": "c",
+        "array": "c",
+        "chrono": "c",
+        "functional": "c",
+        "istream": "c",
+        "ostream": "c",
+        "ratio": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "utility": "c",
+        "esp_log.h": "c"
+    }
+}
