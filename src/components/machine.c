@@ -20,7 +20,7 @@ void machine_init(void) {
     memset(main_ram, 0, RAM_SIZE);
 }
 
-uint8_t machine_mem_rd(uint32_t addr) {
+uint8_t _machine_mem_rd(uint32_t addr) {
     if(addr < RAM_SIZE)
         return *(main_ram + addr);
 
@@ -31,7 +31,7 @@ uint8_t machine_mem_rd(uint32_t addr) {
     return 0;
 }
 
-void machine_mem_wr(uint32_t addr, uint8_t val) {
+void _machine_mem_wr(uint32_t addr, uint8_t val) {
     if(addr < RAM_SIZE) {
         *(main_ram + addr) = val;
         return;
@@ -40,3 +40,16 @@ void machine_mem_wr(uint32_t addr, uint8_t val) {
     // dead memory
     return;
 }
+
+#ifdef TRACE_MEM_ACCESS
+uint8_t machine_mem_rd(uint32_t addr) {
+    uint8_t val = _machine_mem_rd(addr);
+    ESP_LOGI(TAG, "trace: RD 0x%08x: %02x", addr, val);
+    return val;
+}
+
+void machine_mem_wr(uint32_t addr, uint8_t val) {
+    ESP_LOGI(TAG, "trace: WR 0x%08x: %02x", addr, val);
+    _machine_mem_wr(addr, val);
+}
+#endif

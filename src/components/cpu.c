@@ -930,7 +930,7 @@ void cpu_instr_sprint(cpu_instr_t instr, char* buf) {
 }
 
 void cpu_disasm(uint32_t addr, int32_t len) {
-    char buf[64], buf2[32];
+    char buf[32], buf2[32];
     while(len > 0) {
         cpu_instr_t instr = cpu_fetch_decode(addr);
         cpu_instr_sprint(instr, buf);
@@ -942,5 +942,30 @@ void cpu_disasm(uint32_t addr, int32_t len) {
 }
 
 void cpu_run(void) {
+    // fetch instruction
+    cpu_instr_t instr = cpu_fetch_decode((uint32_t)regs.cs << 4 | regs.ip);
 
+    #ifdef TRACE_VCPU
+    char buf[32];
+    cpu_instr_sprint(instr, buf);
+    ESP_LOGI(TAG, "decoded[%04x:%04x]: %s", regs.cs, regs.ip, buf);
+    #endif
+
+    switch(instr.mnemonic) {
+        case mnem_jmp:
+            if(instr.oper1.type == operand_imm8) // jmp rel8
+                regs.ip += instr.length + *(int8_t*)&instr.oper1.imm8;
+            else if(instr.oper1.type == operand_imm16) // jmp rel16
+                regs.ip += instr.length + *(int16_t*)&instr.oper1.imm16;
+            else if(instr.oper1.type == operand_mem8) { // jmp segm16:offs16
+                regs.cs = instr.oper1.mem.far_segm;
+                regs.ip = instr.oper1.mem.far_offs;
+            } 
+            return;
+
+        default:
+            ESP_LOGE(TAG, "%s instruction not implemented!", instr_names[instr.mnemonic]);
+    }
+
+    regs.ip += instr.length;
 }

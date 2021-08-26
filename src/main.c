@@ -9,12 +9,8 @@
 #define TAG "main"
 
 void main_task(void* param) {
-    cpu_disasm(0xffff0, 16);
     while(1)
-        vTaskDelay(10000);
-
-    // while(1)
-    //     cpu_run();
+        cpu_run();
 }
 
 void app_main(void) {
@@ -24,7 +20,7 @@ void app_main(void) {
     ESP_LOGI(TAG, "machine initialized");
 
     // run machine
-    xTaskCreate(main_task, "Emulation", 4096, NULL, 7, NULL);
+    xTaskCreatePinnedToCore(main_task, "Emulation", 4096, NULL, 0, NULL, 0);
     ESP_LOGI(TAG, "emulation task started");
 
     while(1)

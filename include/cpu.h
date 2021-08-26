@@ -4,6 +4,8 @@
 
 // Definitions
 
+#define TRACE_VCPU
+
 #define NO_OPERAND       ((cpu_operand_t){.type = operand_no})
 #define REG_OPERAND(n)   ((cpu_operand_t){.type = operand_reg,   .reg = n})
 #define MEM8_OPERAND(m)  ((cpu_operand_t){.type = operand_mem8,  .mem = m})
