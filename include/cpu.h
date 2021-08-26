@@ -19,19 +19,20 @@ typedef enum {
     mnem_idiv,  mnem_imul,  mnem_in,    mnem_inc,   mnem_int,  mnem_into,  mnem_iret,
     mnem_jo,    mnem_jno,   mnem_jc,    mnem_jnc,   mnem_jz,   mnem_jnz,   mnem_jbe,
     mnem_ja,    mnem_js,    mnem_jns,   mnem_jp,    mnem_jnp,  mnem_jl,    mnem_jge,
-    mnem_jle,   mnem_jg,    mnem_lahf,  mnem_lds,   mnem_lea,
+    mnem_jle,   mnem_jg,    mnem_lahf,  mnem_lds,   mnem_lea,  mnem_loopz, mnem_loopnz,
     mnem_les,   mnem_lodsb, mnem_lodsw, mnem_loop,  mnem_mov,  mnem_movsb, mnem_movsw,
     mnem_mul,   mnem_neg,   mnem_nop,   mnem_or,    mnem_out,  mnem_pop,   mnem_popa,
     mnem_popf,  mnem_push,  mnem_pusha, mnem_pushf, mnem_rcl,  mnem_rcr,   mnem_ret,
     mnem_retf,  mnem_rol,   mnem_ror,   mnem_sahf,  mnem_sal,  mnem_sar,   mnem_sbb,
     mnem_scasb, mnem_scasw, mnem_shl,   mnem_shr,   mnem_stc,  mnem_std,   mnem_sti,
     mnem_stosb, mnem_stosw, mnem_sub,   mnem_test,  mnem_xchg, mnem_xlatb, mnem_xor,
-    mnem_wait
+    mnem_wait,  mnem_jcxz,  mnem_jmp,   mnem_hlt,   mnem_not
 } cpu_mnem_t;
 
 // Instruction operands
 typedef enum {
-    operand_no, operand_reg, operand_mem8, operand_mem16, operand_imm8, operand_imm16
+    operand_no, operand_reg, operand_mem8, operand_mem16, operand_imm8, operand_imm16,
+    operand_far_at_location
 } cpu_oper_type_t;
 
 // Registers that can be operands

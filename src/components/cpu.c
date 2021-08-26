@@ -47,6 +47,9 @@ cpu_mnem_t grp1_tab[8] = {
 cpu_mnem_t grp2_tab[8] = {
     mnem_rol, mnem_ror, mnem_rcl, mnem_rcr, mnem_shl, mnem_shr, 0, mnem_sar
 };
+cpu_mnem_t grp3_tab[8] = {
+    mnem_test, mnem_not, mnem_neg, mnem_mul, mnem_imul, mnem_div, mnem_idiv
+};
 cpu_reg_oper_t reg_to_sreg_tab[4] = {
     reg_es, reg_cs, reg_ss, reg_ds
 };
@@ -56,6 +59,12 @@ cpu_reg_oper_t xchg_tab[7] = {
 cpu_mnem_t str_tab[10] = {
     mnem_movsb, mnem_movsw, mnem_cmpsb, mnem_cmpsw, mnem_stosb, mnem_stosw,
     mnem_lodsb, mnem_lodsw, mnem_scasb, mnem_scasw
+};
+cpu_mnem_t loop_tab[4] = {
+    mnem_loopnz, mnem_loopz, mnem_loop, mnem_jcxz
+};
+cpu_mnem_t flag_tab[6] = {
+    mnem_clc, mnem_stc, mnem_cli, mnem_sti, mnem_cld, mnem_std
 };
 
 char* reg_names[20] = {
@@ -76,14 +85,14 @@ char* instr_names[] = {
     "idiv",  "imul",  "in",    "inc",   "int",  "into",  "iret",
     "jo",    "jno",   "jc",    "jnc",   "jz",   "jnz",   "jbe",
     "ja",    "js",    "jns",   "jp",    "jnp",  "jl",    "jge",
-    "jle",   "jg",    "lahf",  "lds",   "lea",
+    "jle",   "jg",    "lahf",  "lds",   "lea",  "loopz", "loopnz",
     "les",   "lodsb", "lodsw", "loop",  "mov",  "movsb", "movsw",
     "mul",   "neg",   "nop",   "or",    "out",  "pop",   "popa",
     "popf",  "push",  "pusha", "pushf", "rcl",  "rcr",   "ret",
     "retf",  "rol",   "ror",   "sahf",  "sal",  "sar",   "sbb",
     "scasb", "scasw", "shl",   "shr",   "stc",  "std",   "sti",
     "stosb", "stosw", "sub",   "test",  "xchg", "xlatb", "xor",
-    "wait"
+    "wait",  "jcxz",  "jmp",   "hlt",   "not"
 };
 
 // Private functions
@@ -146,6 +155,10 @@ void _cpu_oper_sprint(cpu_operand_t oper, char* buf, cpu_segm_override_t so) {
             buf += sprintf(buf, "%s ", oper.type == operand_mem8 ? "byte" : "word");
             _cpu_mem_sprint(oper.mem, buf, so);
             break;
+        case operand_far_at_location:
+            buf += sprintf(buf, "jmptbl ");
+            _cpu_mem_sprint(oper.mem, buf, so);
+            break;
     }
 }
 void _cpu_byte_sprint(uint32_t addr, uint32_t len, char* buf) {
@@ -189,7 +202,7 @@ void _cpu_decode_modrm(uint32_t* addr, uint8_t d, uint8_t w, cpu_operand_t* op1,
             break;
         case 3:
             op2->type = operand_reg;
-            op2->reg = (w ? modrm_tab_reg_w1 : modrm_tab_reg_w0)[reg];
+            op2->reg = (w ? modrm_tab_reg_w1 : modrm_tab_reg_w0)[rm];
     }
 
     // swap operands around (r/m <- reg instead of reg <- r/m)
@@ -683,7 +696,7 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
         case 0xbe: // mov si, imm16
         case 0xbf: // mov di, imm16
             instr.mnemonic = mnem_mov;
-            instr.oper1 = REG_OPERAND(modrm_tab_reg_w1[op - 0xb0]);
+            instr.oper1 = REG_OPERAND(modrm_tab_reg_w1[op - 0xb8]);
             instr.oper2 = IMM16_OPERAND(_cpu_read16(&addr));
             break;
 
@@ -738,6 +751,152 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
             instr.oper2 = NO_OPERAND;
             break;
         
+        case 0xd0: // <alu> r/m8,  1
+        case 0xd1: // <alu> r/m16, 1
+            _cpu_decode_modrm(&addr, 0, w, &instr.oper1, &instr.oper2);
+            instr.mnemonic = grp2_tab[instr.oper2.reg / 2];
+            instr.oper2 = IMM8_OPERAND(1);
+            if(instr.mnemonic == 0)
+                instr.valid = 0;
+            break;
+        case 0xd2: // <alu> r/m8,  cl
+        case 0xd3: // <alu> r/m16, cl
+            _cpu_decode_modrm(&addr, 0, w, &instr.oper1, &instr.oper2);
+            instr.mnemonic = grp2_tab[instr.oper2.reg / 2];
+            instr.oper2 = REG_OPERAND(reg_cl);
+            if(instr.mnemonic == 0)
+                instr.valid = 0;
+            break;
+        case 0xd4: // aam imm8
+        case 0xd5: // aad imm8
+            instr.mnemonic = w ? mnem_aad : mnem_aam;
+            instr.oper1 = IMM8_OPERAND(READ(addr++));
+            instr.oper2 = NO_OPERAND;
+            break;
+        case 0xd7: // xlatb
+            instr.mnemonic = mnem_xlatb;
+            instr.oper1 = NO_OPERAND;
+            instr.oper2 = NO_OPERAND;
+            break;
+        case 0xe0: // loopnz
+        case 0xe1: // loopz
+        case 0xe2: // loop
+        case 0xe3: // jcxz
+            instr.mnemonic = loop_tab[op - 0xe0];
+            instr.oper1 = IMM8_OPERAND(READ(addr++));
+            instr.oper2 = NO_OPERAND;
+            break;
+        case 0xe4: // in al, imm8
+        case 0xe5: // in ax, imm8
+            instr.mnemonic = mnem_in;
+            instr.oper1 = REG_OPERAND(w ? reg_ax : reg_al);
+            instr.oper2 = IMM8_OPERAND(READ(addr++));
+            break;
+        case 0xe6: // out imm8, al
+        case 0xe7: // out imm8, ax
+            instr.mnemonic = mnem_out;
+            instr.oper1 = IMM8_OPERAND(READ(addr++));
+            instr.oper2 = REG_OPERAND(w ? reg_ax : reg_al);
+            break;
+        case 0xe8: // call rel16
+        case 0xe9: // jmp  rel16
+            instr.mnemonic = w ? mnem_jmp : mnem_call;
+            instr.oper1 = IMM16_OPERAND(_cpu_read16(&addr));
+            instr.oper2 = NO_OPERAND;
+            break;
+        case 0xea: // jmp segm:offs
+            instr.mnemonic = mnem_call;
+            instr.oper1 = MEM8_OPERAND(_cpu_decode_far(&addr));
+            instr.oper2 = NO_OPERAND;
+            break;
+        case 0xeb: // jmp rel8
+            instr.mnemonic = mnem_jmp;
+            instr.oper1 = IMM8_OPERAND(READ(addr++));
+            instr.oper2 = NO_OPERAND;
+            break;
+        case 0xec: // in al, dx
+        case 0xed: // in ax, dx
+            instr.mnemonic = mnem_in;
+            instr.oper1 = REG_OPERAND(w ? reg_ax : reg_al);
+            instr.oper2 = REG_OPERAND(reg_dx);
+            break;
+        case 0xee: // out dx, al
+        case 0xef: // out dx, ax
+            instr.mnemonic = mnem_out;
+            instr.oper1 = REG_OPERAND(reg_dx);
+            instr.oper2 = REG_OPERAND(w ? reg_ax : reg_al);
+            break;
+
+        case 0xf0: // lock
+            ESP_LOGE(TAG, "unexpected LOCK prefix");
+            instr.valid = 0;
+            break;
+        case 0xf2: // repnz
+            ESP_LOGE(TAG, "unexpected REPNZ prefix");
+            instr.valid = 0;
+            break;
+        case 0xf3: // repz
+            ESP_LOGE(TAG, "unexpected REPZ prefix");
+            instr.valid = 0;
+            break;
+        case 0xf4: // hlt
+            instr.mnemonic = mnem_hlt;
+            instr.oper1 = NO_OPERAND;
+            instr.oper2 = NO_OPERAND;
+            break;
+        case 0xf5: // cmc
+            instr.mnemonic = mnem_cmc;
+            instr.oper1 = NO_OPERAND;
+            instr.oper2 = NO_OPERAND;
+            break;
+        case 0xf6: // <alu> r/m8,  <nothing>|imm8
+        case 0xf7: // <alu> r/m16, <nothing>|imm8
+            _cpu_decode_modrm(&addr, 0, w, &instr.oper1, &instr.oper2);
+            instr.mnemonic = grp3_tab[instr.oper2.reg / 2];
+            if(instr.mnemonic == mnem_test)
+                instr.oper2 = IMM8_OPERAND(READ(addr++));
+            else
+                instr.oper2 = NO_OPERAND;
+            break;
+        case 0xf8: // clc
+        case 0xf9: // stc
+        case 0xfa: // cli
+        case 0xfb: // sti
+        case 0xfc: // cld
+        case 0xfd: // std
+            instr.mnemonic = flag_tab[op - 0xf8];
+            instr.oper1 = NO_OPERAND;
+            instr.oper2 = NO_OPERAND;
+            break;
+        case 0xfe: // inc|dec r/m8
+            _cpu_decode_modrm(&addr, 0, 0, &instr.oper1, &instr.oper2);
+            instr.mnemonic = instr.oper2.reg == 0 ? mnem_inc : mnem_dec;
+            instr.oper2 = NO_OPERAND;
+            break;
+        case 0xff: // inc|dec r/m16; call [r/m16]; jmp r/m16; jmp [r/m16]; push r/m16
+            _cpu_decode_modrm(&addr, 0, 0, &instr.oper1, &instr.oper2);
+            switch(instr.oper2.reg) {
+                case 0:
+                    instr.mnemonic = mnem_inc;
+                    break;
+                case 1:
+                    instr.mnemonic = mnem_dec;
+                    break;
+                case 3:
+                    instr.oper1.type = operand_far_at_location;
+                case 2:
+                    instr.mnemonic = mnem_call;
+                    break;
+                case 5:
+                    instr.oper1.type = operand_far_at_location;
+                case 4:
+                    instr.mnemonic = mnem_jmp;
+                    break;
+                default:
+                    instr.mnemonic = mnem_push;
+            }
+            instr.oper2 = NO_OPERAND;
+            break;
 
         default:
             instr.valid = 0;
