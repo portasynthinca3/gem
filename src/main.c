@@ -9,7 +9,7 @@
 #define TAG "main"
 
 void main_task(void* param) {
-    cpu_disasm(BIOS_START, 512);
+    cpu_disasm(0xffff0, 16);
     while(1)
         vTaskDelay(10000);
 

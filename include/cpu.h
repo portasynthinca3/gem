@@ -123,4 +123,4 @@ void cpu_run  (void);
 
 cpu_instr_t cpu_fetch_decode(uint32_t addr);
 void        cpu_instr_sprint(cpu_instr_t instr, char* buf);
-void        cpu_disasm      (uint32_t start, uint32_t len);
+void        cpu_disasm      (uint32_t start, int32_t len);

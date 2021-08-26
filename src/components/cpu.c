@@ -107,13 +107,13 @@ cpu_mem_oper_t _cpu_decode_far(uint32_t* addr) {
     uint16_t offs = _cpu_read16(addr);
     uint16_t segm = _cpu_read16(addr);
 
-    return (cpu_mem_oper_t){.mode = disp_far, .far_offs = offs, .far_segm = segm};
+    return (cpu_mem_oper_t){.disp = disp_far, .far_offs = offs, .far_segm = segm};
 }
 
 cpu_mem_oper_t _cpu_decode_abs(uint32_t* addr) {
     uint16_t offs = _cpu_read16(addr);
 
-    return (cpu_mem_oper_t){.mode = disp_abs, .disp16 = offs};
+    return (cpu_mem_oper_t){.disp = disp_abs, .disp16 = offs};
 }
 
 // printing functions
@@ -805,7 +805,7 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
             instr.oper2 = NO_OPERAND;
             break;
         case 0xea: // jmp segm:offs
-            instr.mnemonic = mnem_call;
+            instr.mnemonic = mnem_jmp;
             instr.oper1 = MEM8_OPERAND(_cpu_decode_far(&addr));
             instr.oper2 = NO_OPERAND;
             break;
@@ -929,9 +929,9 @@ void cpu_instr_sprint(cpu_instr_t instr, char* buf) {
     }
 }
 
-void cpu_disasm(uint32_t addr, uint32_t len) {
+void cpu_disasm(uint32_t addr, int32_t len) {
     char buf[64], buf2[32];
-    while(len) {
+    while(len > 0) {
         cpu_instr_t instr = cpu_fetch_decode(addr);
         cpu_instr_sprint(instr, buf);
         _cpu_byte_sprint(addr, instr.length, buf2);
