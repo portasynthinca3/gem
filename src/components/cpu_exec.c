@@ -229,6 +229,12 @@ inline void _cpu_set_szp(uint8_t w, int32_t result) {
     WRITE_FLAG(FLAG_PF, _cpu_parity(w, *(uint32_t*)&result));
 }
 
+inline int16_t _cpu_sx(int8_t val) {
+    if(val & 0x80)
+        return 0xff00 | val;
+    return val;
+}
+
 inline void _cpu_execute_jump(cpu_instr_t instr) {
     // see if we need to jump
     uint8_t condition_met;
@@ -262,7 +268,7 @@ inline void _cpu_execute_jump(cpu_instr_t instr) {
 
     // perform the jump
     if(instr.oper1.type == operand_imm8) // rel8
-        regs.ip += instr.length + *(int8_t*)&instr.oper1.imm8;
+        regs.ip += instr.length + _cpu_sx(*(int8_t*)&instr.oper1.imm8);
     else if(instr.oper1.type == operand_imm16) // rel16
         regs.ip += instr.length + *(int16_t*)&instr.oper1.imm16;
     else if(instr.oper1.type == operand_mem8) { // segm16:offs16
@@ -673,8 +679,19 @@ void cpu_run(void) {
 
         case mnem_loop:
         case mnem_loopz:
-        case mnem_loopnz:
+        case mnem_loopnz: {
+            regs.cx--;
+            uint8_t should_jump = regs.cx != 0;
+            if(instr.mnemonic == mnem_loopz)
+                should_jump = should_jump && READ_FLAG(FLAG_ZF); // &&= is not a thing :(
+            else if(instr.mnemonic == mnem_loopnz)
+                should_jump = should_jump && !READ_FLAG(FLAG_ZF);
+            if(should_jump) {
+                regs.ip += instr.length + _cpu_sx(*(int8_t*)&instr.oper1.imm8);
+                add_instr_length = 0;
+            }
             break;
+        }
 
         default:
             ESP_LOGE(TAG, "instruction not implemented. halting");
