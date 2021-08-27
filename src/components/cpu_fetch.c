@@ -133,9 +133,9 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
     do {
         op = READ(addr++);
         switch(op) {
-            case 0xf3: instr.rp = rp_rep;   break; //
-            case 0xf2: instr.rp = rp_repne; break; // REP prefixes
-            case 0xf0: instr.lock  = 1;     break; 
+            case 0xf3: instr.rp = rp_rep;   break; // REP prefixes
+            case 0xf2: instr.rp = rp_repne; break; //
+            case 0xf0: instr.lock = 1;      break; 
             case 0x2e: instr.so = so_cs;    break; //
             case 0x3e: instr.so = so_ds;    break; // segment overrides
             case 0x26: instr.so = so_es;    break; //
@@ -368,72 +368,29 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
             instr.oper2 = NO_OPERAND;
             break;
 
-        case 0x40: // inc ax
-        case 0x41: // inc cx
-        case 0x42: // inc dx
-        case 0x43: // inc bx
-        case 0x44: // inc sp
-        case 0x45: // inc bp
-        case 0x46: // inc si
-        case 0x47: // inc di
+        case 0x40 ... 0x47: // inc ax...di
             instr.mnemonic = mnem_inc;
             instr.oper1 = REG_OPERAND(unary_op_tab[op - 0x40]);
             instr.oper2 = NO_OPERAND;
             break;
-        case 0x48: // dec ax
-        case 0x49: // dec cx
-        case 0x4a: // dec dx
-        case 0x4b: // dec bx
-        case 0x4c: // dec sp
-        case 0x4d: // dec bp
-        case 0x4e: // dec si
-        case 0x4f: // dec di
+        case 0x48 ... 0x4f: // dec ax...di
             instr.mnemonic = mnem_dec;
             instr.oper1 = REG_OPERAND(unary_op_tab[op - 0x48]);
             instr.oper2 = NO_OPERAND;
             break;
 
-        case 0x50: // push ax
-        case 0x51: // push cx
-        case 0x52: // push dx
-        case 0x53: // push bx
-        case 0x54: // push sp
-        case 0x55: // push bp
-        case 0x56: // push si
-        case 0x57: // push di
+        case 0x50 ... 0x57: // push ax...di
             instr.mnemonic = mnem_push;
             instr.oper1 = REG_OPERAND(unary_op_tab[op - 0x50]);
             instr.oper2 = NO_OPERAND;
             break;
-        case 0x58: // pop ax
-        case 0x59: // pop cx
-        case 0x5a: // pop dx
-        case 0x5b: // pop bx
-        case 0x5c: // pop sp
-        case 0x5d: // pop bp
-        case 0x5e: // pop si
-        case 0x5f: // pop di
+        case 0x58 ... 0x5f: // pop ax...di
             instr.mnemonic = mnem_pop;
             instr.oper1 = REG_OPERAND(unary_op_tab[op - 0x58]);
             instr.oper2 = NO_OPERAND;
             break;
 
-        case 0x70: // jo  rel8
-        case 0x71: // jno rel8
-        case 0x72: // jc  rel8
-        case 0x73: // jnc rel8
-        case 0x74: // jz  rel8
-        case 0x75: // jnz rel8
-        case 0x76: // jbe rel8
-        case 0x77: // ja  rel8
-        case 0x78: // jo  rel8
-        case 0x79: // jno rel8
-        case 0x7a: // js  rel8
-        case 0x7b: // jns rel8
-        case 0x7c: // jp  rel8
-        case 0x7d: // jnp rel8
-        case 0x7e: // jl  rel8
-        case 0x7f: // jge rel8
+        case 0x70 ... 0x7f: // j<condition> rel8
             instr.mnemonic = cond_jmp_tab[op - 0x70];
             instr.oper1 = (cpu_operand_t){.type = operand_imm8, .imm8 = READ(addr++)};
             instr.oper2 = NO_OPERAND;
@@ -494,19 +451,12 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
             instr.oper1 = NO_OPERAND;
             instr.oper2 = NO_OPERAND;
             break;
-        case 0x91: // xchg cx, ax
-        case 0x92: // xchg dx, ax
-        case 0x93: // xchg bx, ax
-        case 0x94: // xchg sp, ax
-        case 0x95: // xchg bp, ax
-        case 0x96: // xchg si, ax
-        case 0x97: // xchg di, ax
+        case 0x91 ... 0x97: // xchg cx...di, ax
             instr.mnemonic = mnem_xchg;
             instr.oper1 = REG_OPERAND(xchg_tab[op - 0x91]);
             instr.oper2 = REG_OPERAND(reg_ax);
             break;
-        case 0x98: // cbw
-        case 0x99: // cwd
+        case 0x98 ... 0x99: // cbw/cwd
             instr.mnemonic = w ? mnem_cwd : mnem_cbw;
             instr.oper1 = NO_OPERAND;
             instr.oper2 = NO_OPERAND;
@@ -521,14 +471,12 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
             instr.oper1 = NO_OPERAND;
             instr.oper2 = NO_OPERAND;
             break;
-        case 0x9c: // pushf
-        case 0x9d: // popf
+        case 0x9c ... 0x9d: // pushf/popf
             instr.mnemonic = w ? mnem_popf : mnem_pushf;
             instr.oper1 = NO_OPERAND;
             instr.oper2 = NO_OPERAND;
             break;
-        case 0x9e: // sahf
-        case 0x9f: // lahf
+        case 0x9e ... 0x9f: // sahf/lahf
             instr.mnemonic = w ? mnem_lahf : mnem_sahf;
             instr.oper1 = NO_OPERAND;
             instr.oper2 = NO_OPERAND;
@@ -549,16 +497,8 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
                 instr.oper2 = temp;
             }
             break;
-        case 0xa4: // movsb
-        case 0xa5: // movsw
-        case 0xa6: // cmpsb
-        case 0xa7: // cmpsw
-        case 0xaa: // stosb
-        case 0xab: // stosw
-        case 0xac: // lodsb
-        case 0xad: // lodsw
-        case 0xae: // scasb
-        case 0xaf: // scasw
+        case 0xa4 ... 0xa7: // string instructions
+        case 0xaa ... 0xaf: //
             if(op >= 0xaa) op -= 2;
             instr.mnemonic = str_tab[op - 0xa4];
             instr.oper1 = NO_OPERAND;
@@ -571,26 +511,12 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
             instr.oper1 = REG_OPERAND(w ? reg_ax : reg_al);
             break;
 
-        case 0xb0: // mov al, imm8
-        case 0xb1: // mov cl, imm8
-        case 0xb2: // mov dl, imm8
-        case 0xb3: // mov bl, imm8
-        case 0xb4: // mov ah, imm8
-        case 0xb5: // mov ch, imm8
-        case 0xb6: // mov dl, imm8
-        case 0xb7: // mov bh, imm8
+        case 0xb0 ... 0xb7: // mov al...bh, imm8
             instr.mnemonic = mnem_mov;
             instr.oper1 = REG_OPERAND(modrm_tab_reg_w0[op - 0xb0]);
             instr.oper2 = IMM8_OPERAND(READ(addr++));
             break;
-        case 0xb8: // mov ax, imm16
-        case 0xb9: // mov cx, imm16
-        case 0xba: // mov dx, imm16
-        case 0xbb: // mov bx, imm16
-        case 0xbc: // mov sp, imm16
-        case 0xbd: // mov bp, imm16
-        case 0xbe: // mov si, imm16
-        case 0xbf: // mov di, imm16
+        case 0xb8 ... 0xbf: // mov ax...di, imm16
             instr.mnemonic = mnem_mov;
             instr.oper1 = REG_OPERAND(modrm_tab_reg_w1[op - 0xb8]);
             instr.oper2 = IMM16_OPERAND(_cpu_read16(&addr));

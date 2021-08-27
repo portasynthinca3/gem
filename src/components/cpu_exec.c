@@ -726,6 +726,54 @@ void cpu_step(void) {
             break;
         }
 
+        case mnem_lds:
+        case mnem_les:
+            WROP_16(1, RDOP_16(2));
+            instr.oper2.mem.disp8 += 2; // HAX!
+            instr.oper2.mem.disp16 += 2;
+            if(instr.mnemonic == mnem_lds)
+                regs.ds = RDOP_16(2);
+            else
+                regs.es = RDOP_16(2);
+            break;
+        
+        case mnem_lea:
+            WROP_16(1, _cpu_effective_addr(instr.oper2.mem, instr.so));
+            break;
+
+        case mnem_nop:
+        case mnem_wait: // we don't have an fpu
+            break;
+
+        case mnem_push:
+            _cpu_push(RDOP_16(1));
+            break;
+        case mnem_pushf:
+            _cpu_push(regs.flags);
+            break;
+        case mnem_pop:
+            WROP_16(1, _cpu_pop());
+            break;
+        case mnem_popf:
+            regs.flags = _cpu_pop();
+            break;
+
+        case mnem_xchg:
+            if(w) {
+                uint16_t tmp = RDOP_16(1);
+                WROP_16(1, RDOP_16(2));
+                WROP_16(2, tmp);
+            } else {
+                uint16_t tmp = RDOP_16(2);
+                WROP_16(2, RDOP_16(1));
+                WROP_16(1, tmp);
+            }
+            break;
+
+        case mnem_xlatb:
+            regs.al = ((uint32_t)regs.ds << 4) + regs.bx + regs.al;
+            break;
+
         default:
             ESP_LOGE(TAG, "instruction not implemented");
             ESP_LOGE(TAG, "CPU state:");
