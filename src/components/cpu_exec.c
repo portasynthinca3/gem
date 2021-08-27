@@ -661,8 +661,17 @@ void cpu_run(void) {
             break;
         }
 
+        case mnem_in:
+            if(w) WROP(1, machine_io_rd16(RDOP_16(2)));
+            else  WROP(1, machine_io_rd8(RDOP_16(2)));
+            break;
+        case mnem_out:
+            if(w) machine_io_wr16(RDOP_16(2), RDOP(1));
+            else  machine_io_wr8(RDOP_16(2), RDOP(1));
+            break;
+
         default:
-            ESP_LOGE(TAG, "instruction is not implemented. halting");
+            ESP_LOGE(TAG, "instruction not implemented. halting");
             while(1);
     }
 

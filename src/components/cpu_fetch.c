@@ -686,12 +686,12 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
         case 0xe5: // in ax, imm8
             instr.mnemonic = mnem_in;
             instr.oper1 = REG_OPERAND(w ? reg_ax : reg_al);
-            instr.oper2 = IMM8_OPERAND(READ(addr++));
+            instr.oper2 = IMM16_OPERAND(READ(addr++));
             break;
         case 0xe6: // out imm8, al
         case 0xe7: // out imm8, ax
             instr.mnemonic = mnem_out;
-            instr.oper1 = IMM8_OPERAND(READ(addr++));
+            instr.oper1 = IMM16_OPERAND(READ(addr++));
             instr.oper2 = REG_OPERAND(w ? reg_ax : reg_al);
             break;
         case 0xe8: // call rel16
