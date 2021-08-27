@@ -552,8 +552,8 @@ void cpu_step(void) {
         case mnem_adc:
         case mnem_add: {
             uint16_t result;
-            uint8_t c1 = (w ? RDOP_16(1) : RDOP_8(1)) >> (W_BITS(w) - 1);
-            uint8_t c2 = (w ? RDOP_16(1) : RDOP_8(1)) >> (W_BITS(w) - 1);
+            uint8_t c1 = RDOP(1) >> (W_BITS(w) - 1);
+            uint8_t c2 = RDOP(2) >> (W_BITS(w) - 1);
             uint8_t carry = (instr.mnemonic == mnem_adc) ? READ_FLAG(FLAG_CF) : 0;
             if(w) result = WROP_16(1, RDOP_16(1) + RDOP_16(2) + carry);
             else  result = WROP_8(1, RDOP_8(1) + RDOP_8(2) + carry);
@@ -563,34 +563,34 @@ void cpu_step(void) {
             break;
         }
         case mnem_sbb:
-            if(w) WROP_16(1, _cpu_sub(RDOP_16(1), RDOP_16(2) - READ_FLAG(FLAG_CF), w));
-            else  WROP_8(1, _cpu_sub(RDOP_8(1), RDOP_8(2) - READ_FLAG(FLAG_CF), w));
+            WROP(1, _cpu_sub(RDOP(1), RDOP(2) - READ_FLAG(FLAG_CF), w));
             break;
         case mnem_sub:
-            if(w) WROP_16(1, _cpu_sub(RDOP_16(1), RDOP_16(2), w));
-            else  WROP_8(1, _cpu_sub(RDOP_8(1), RDOP_8(2), w));
+            WROP(1, _cpu_sub(RDOP(1), RDOP(2), w));
             break;
         case mnem_cmp: 
-            if(w) _cpu_sub(RDOP_16(1), RDOP_16(2), w);
-            else  _cpu_sub(RDOP_8(1), RDOP_8(2), w);
+            _cpu_sub(RDOP(1), RDOP(2), w);
             break;
         case mnem_and:
-            if(w) _cpu_set_szp(w, WROP_16(1, RDOP_16(1) & RDOP_16(2)));
-            else  _cpu_set_szp(w, WROP_8(1, RDOP_8(1) & RDOP_8(2)));
+            _cpu_set_szp(w, WROP(1, RDOP(1) & RDOP(2)));
             WRITE_FLAG(FLAG_OF, 0);
             WRITE_FLAG(FLAG_CF, 0);
             break;
+        case mnem_test:
+            _cpu_set_szp(w, RDOP(1) & RDOP(2));
+            break;
         case mnem_or:
-            if(w) _cpu_set_szp(w, WROP_16(1, RDOP_16(1) | RDOP_16(2)));
-            else  _cpu_set_szp(w, WROP_8(1, RDOP_8(1) | RDOP_8(2)));
+            _cpu_set_szp(w, WROP(1, RDOP(1) | RDOP(2)));
             WRITE_FLAG(FLAG_OF, 0);
             WRITE_FLAG(FLAG_CF, 0);
             break;
         case mnem_xor:
-            if(w) _cpu_set_szp(w, WROP_16(1, RDOP_16(1) ^ RDOP_16(2)));
-            else  _cpu_set_szp(w, WROP_8(1, RDOP_8(1) ^ RDOP_8(2)));
+            _cpu_set_szp(w, WROP(1, RDOP(1) ^ RDOP(2)));
             WRITE_FLAG(FLAG_OF, 0);
             WRITE_FLAG(FLAG_CF, 0);
+            break;
+        case mnem_not:
+            WROP(1, ~RDOP(1));
             break;
 
         case mnem_lahf:
@@ -764,9 +764,9 @@ void cpu_step(void) {
                 WROP_16(1, RDOP_16(2));
                 WROP_16(2, tmp);
             } else {
-                uint16_t tmp = RDOP_16(2);
-                WROP_16(2, RDOP_16(1));
-                WROP_16(1, tmp);
+                uint8_t tmp = RDOP_8(1);
+                WROP_8(1, RDOP_8(2));
+                WROP_8(2, tmp);
             }
             break;
 
