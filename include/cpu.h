@@ -4,7 +4,8 @@
 
 // Definitions
 
-#define TRACE_VCPU
+#define CPU_PAUSED_ON_STARTUP
+#define CPU_MAX_BREAKPOINTS 8
 
 #define NO_OPERAND       ((cpu_operand_t){.type = operand_no})
 #define REG_OPERAND(n)   ((cpu_operand_t){.type = operand_reg,   .reg = n})
@@ -152,6 +153,13 @@ typedef struct {
     uint16_t flags;
 } cpu_regs_t;
 
+// Breakpoint
+typedef struct {
+    uint8_t active;
+    uint16_t cs;
+    uint16_t ip;
+} cpu_brkpnt_t;
+
 // Private functions
 
 uint16_t _cpu_read16 (uint32_t* addr);
@@ -160,9 +168,19 @@ void     _cpu_write16(uint32_t* addr, uint16_t val);
 // Public functions
 
 void cpu_reset(void);
-void cpu_run  (void);
+void cpu_step (void);
+void cpu_loop (void);
 
 cpu_instr_t cpu_fetch_decode(uint32_t addr);
 void        cpu_instr_sprint(cpu_instr_t instr, char* buf);
 void        cpu_disasm      (uint32_t start, int32_t len);
-void        cpu_print_state (void);
+
+void    cpu_print_state(void);
+void    cpu_set_running(uint8_t val);
+void    cpu_single_step(uint8_t steps);
+uint8_t cpu_running    (void);
+void    cpu_set_trace  (uint8_t val);
+uint8_t cpu_trace      (void);
+uint8_t cpu_breakpoint (uint16_t cs, uint16_t ip);
+
+void cpu_repl_init(void);

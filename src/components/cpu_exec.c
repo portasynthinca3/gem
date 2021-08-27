@@ -4,16 +4,26 @@
 #include <esp_log.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #define TAG "8086-exec"
 
 // CPU state
 
-cpu_regs_t regs;
+#ifdef CPU_PAUSED_ON_STARTUP
+static uint8_t running = 0;
+#else
+static uint8_t running = 1;
+#endif
+static uint8_t trace = 0;
+static cpu_regs_t regs;
+static cpu_brkpnt_t breakpoints[CPU_MAX_BREAKPOINTS];
+static SemaphoreHandle_t single_steps;
 
 // Private functions
 
-inline uint32_t _cpu_sreg_base(cpu_segm_override_t so) {
+static inline uint32_t _cpu_sreg_base(cpu_segm_override_t so) {
     switch(so) {
         case so_ds: return (uint32_t)regs.ds << 4;
         case so_cs: return (uint32_t)regs.cs << 4;
@@ -24,7 +34,7 @@ inline uint32_t _cpu_sreg_base(cpu_segm_override_t so) {
             return 0;
     }
 }
-inline uint16_t _cpu_index(cpu_mem_mode_t mode) {
+static inline uint16_t _cpu_index(cpu_mem_mode_t mode) {
     switch(mode) {
         case mm_zero:  return 0;
         case mm_bp:    return regs.bp;
@@ -202,19 +212,19 @@ int32_t _cpu_opwr16(cpu_operand_t op, cpu_segm_override_t so, int32_t val) {
     }
 }
 
-inline void _cpu_push(uint16_t val) {
+static inline void _cpu_push(uint16_t val) {
     regs.sp -= 2;
     uint32_t addr = ((uint32_t)regs.ss << 4) + regs.sp;
     _cpu_write16(&addr, val);
 }
-inline uint16_t _cpu_pop() {
+static inline uint16_t _cpu_pop() {
     uint32_t addr = ((uint32_t)regs.ss << 4) + regs.sp;
     uint16_t val = _cpu_read16(&addr);
     regs.sp += 2;
     return val;
 }
 
-inline uint8_t _cpu_parity(uint8_t w, uint32_t val) {
+static inline uint8_t _cpu_parity(uint8_t w, uint32_t val) {
     uint8_t ones = 0;
     for(int i = 0; i < W_BITS(w); i++) {
         if(val & 1) ones++;
@@ -223,19 +233,19 @@ inline uint8_t _cpu_parity(uint8_t w, uint32_t val) {
     return ones % 2;
 }
 
-inline void _cpu_set_szp(uint8_t w, int32_t result) {
+static inline void _cpu_set_szp(uint8_t w, int32_t result) {
     WRITE_FLAG(FLAG_SF, result < 0);
     WRITE_FLAG(FLAG_ZF, result == 0);
     WRITE_FLAG(FLAG_PF, _cpu_parity(w, *(uint32_t*)&result));
 }
 
-inline int16_t _cpu_sx(int8_t val) {
+static inline int16_t _cpu_sx(int8_t val) {
     if(val & 0x80)
         return 0xff00 | val;
     return val;
 }
 
-inline void _cpu_execute_jump(cpu_instr_t instr) {
+static inline void _cpu_execute_jump(cpu_instr_t instr) {
     // see if we need to jump
     uint8_t condition_met;
     switch(instr.mnemonic) {
@@ -281,14 +291,14 @@ inline void _cpu_execute_jump(cpu_instr_t instr) {
     }
 }
 
-inline uint8_t _cpu_is_oper_16bit(cpu_operand_t op) {
+static inline uint8_t _cpu_is_oper_16bit(cpu_operand_t op) {
     return op.type == operand_imm16
         || op.type == operand_mem16
         || (op.type == operand_reg && op.reg % 2 == 0)
         || (op.type == operand_reg && op.reg >= reg_cs); // segment register
 }
 
-inline uint32_t _cpu_rcl(uint32_t val, uint8_t amt, uint8_t w) {
+static inline uint32_t _cpu_rcl(uint32_t val, uint8_t amt, uint8_t w) {
     for(int i = 0; i < amt; i++) {
         uint8_t cf = val >> (W_BITS(w) - 1);
         val <<= 1;
@@ -301,7 +311,7 @@ inline uint32_t _cpu_rcl(uint32_t val, uint8_t amt, uint8_t w) {
     return val;
 }
 
-inline uint32_t _cpu_rcr(uint32_t val, uint8_t amt, uint8_t w) {
+static inline uint32_t _cpu_rcr(uint32_t val, uint8_t amt, uint8_t w) {
     if(amt == 1)
         WRITE_FLAG(FLAG_OF, !(val >> (W_BITS(w) - 1)) != !READ_FLAG(FLAG_CF));
     for(int i = 0; i < amt; i++) {
@@ -314,7 +324,7 @@ inline uint32_t _cpu_rcr(uint32_t val, uint8_t amt, uint8_t w) {
     return val;
 }
 
-inline uint32_t _cpu_rol(uint32_t val, uint8_t amt, uint8_t w) {
+static inline uint32_t _cpu_rol(uint32_t val, uint8_t amt, uint8_t w) {
     for(int i = 0; i < amt; i++) {
         uint8_t cf = val >> (W_BITS(w) - 1);
         val <<= 1;
@@ -328,7 +338,7 @@ inline uint32_t _cpu_rol(uint32_t val, uint8_t amt, uint8_t w) {
     return val;
 }
 
-inline uint32_t _cpu_ror(uint32_t val, uint8_t amt, uint8_t w) {
+static inline uint32_t _cpu_ror(uint32_t val, uint8_t amt, uint8_t w) {
     for(int i = 0; i < amt; i++) {
         uint8_t cf = val & 1;
         val >>= 1;
@@ -342,7 +352,7 @@ inline uint32_t _cpu_ror(uint32_t val, uint8_t amt, uint8_t w) {
     return val;
 }
 
-inline uint32_t _cpu_shl(uint32_t val, uint8_t amt, uint8_t w) {
+static inline uint32_t _cpu_shl(uint32_t val, uint8_t amt, uint8_t w) {
     for(int i = 0; i < amt; i++) {
         WRITE_FLAG(FLAG_CF, val >> (W_BITS(w) - 1));
         val <<= 1;
@@ -352,7 +362,7 @@ inline uint32_t _cpu_shl(uint32_t val, uint8_t amt, uint8_t w) {
     _cpu_set_szp(w, val);
     return val;
 }
-inline uint32_t _cpu_shr(uint32_t val, uint8_t amt, uint8_t w) {
+static inline uint32_t _cpu_shr(uint32_t val, uint8_t amt, uint8_t w) {
     uint32_t orig_val = val;
     for(int i = 0; i < amt; i++) {
         WRITE_FLAG(FLAG_CF, val & 1);
@@ -363,7 +373,7 @@ inline uint32_t _cpu_shr(uint32_t val, uint8_t amt, uint8_t w) {
     _cpu_set_szp(w, val);
     return val;
 }
-inline uint32_t _cpu_sar(uint32_t val, uint8_t amt, uint8_t w) {
+static inline uint32_t _cpu_sar(uint32_t val, uint8_t amt, uint8_t w) {
     uint32_t sign = val & (1 << (W_BITS(w) - 1));
     for(int i = 0; i < amt; i++) {
         WRITE_FLAG(FLAG_CF, val & 1);
@@ -376,7 +386,7 @@ inline uint32_t _cpu_sar(uint32_t val, uint8_t amt, uint8_t w) {
     return val;
 }
 
-inline uint32_t _cpu_sub(uint32_t a, uint32_t b, uint8_t w) {
+static inline uint32_t _cpu_sub(uint32_t a, uint32_t b, uint8_t w) {
     uint8_t c1 = a >> (W_BITS(w) - 1);
     uint8_t c2 = b >> (W_BITS(w) - 1);
     uint16_t result = a - b;
@@ -392,6 +402,13 @@ void cpu_reset(void) {
     // reset registers
     memset(&regs, 0, sizeof(regs));
     regs.cs = 0xffff;
+
+    // reset breakpoints
+    memset(breakpoints, 0, sizeof(breakpoints));
+
+    // create single-step semaphore
+    if(single_steps == NULL)
+        single_steps = xSemaphoreCreateCounting(10000, 0);
 }
 
 void cpu_print_state(void) {
@@ -410,23 +427,34 @@ void cpu_print_state(void) {
         READ_FLAG(FLAG_OF) ? "O" : "o");
 }
 
-void cpu_run(void) {
+void cpu_step(void) {
     // fetch instruction
     cpu_instr_t instr = cpu_fetch_decode((uint32_t)regs.cs << 4 | regs.ip);
 
-    #ifdef TRACE_VCPU
-    char buf[32];
-    cpu_instr_sprint(instr, buf);
-    ESP_LOGI(TAG, "decoded instr at %04x:%04x: %s", regs.cs, regs.ip, buf);
+    // trigger breakpoints
+    #if CPU_MAX_BREAKPOINTS != 0
+    for(int i = 0; i < CPU_MAX_BREAKPOINTS; i++) {
+        if(breakpoints[i].active && breakpoints[i].cs == regs.cs && breakpoints[i].ip == regs.ip) {
+            running = 0;
+            trace = 1;
+            breakpoints[i].active = 0;
+        }
+    }
     #endif
+
+    if(trace) {
+        char buf[32];
+        cpu_instr_sprint(instr, buf);
+        ESP_LOGI(TAG, "decoded instr at %04x:%04x: %s", regs.cs, regs.ip, buf);
+    }
 
     // macros
     #define RDOP_8(o)     _cpu_oprd8 ((o == 2) ? instr.oper2 : instr.oper1, instr.so)
     #define RDOP_16(o)    _cpu_oprd16((o == 2) ? instr.oper2 : instr.oper1, instr.so)
     #define WROP_8(o, v)  _cpu_opwr8 ((o == 2) ? instr.oper2 : instr.oper1, instr.so, v)
     #define WROP_16(o, v) _cpu_opwr16((o == 2) ? instr.oper2 : instr.oper1, instr.so, v)
-    #define RDOP(o)    (w ? RDOP_16(o)    : RDOP_8(o))
-    #define WROP(o, v) (w ? WROP_16(o, v) : WROP_8(o, v))
+    #define RDOP(o)       (w ? RDOP_16(o)    : RDOP_8(o))
+    #define WROP(o, v)    (w ? WROP_16(o, v) : WROP_8(o, v))
 
     // determine bit size
     uint8_t op1w = _cpu_is_oper_16bit(instr.oper1);
@@ -644,16 +672,16 @@ void cpu_run(void) {
                 regs.cs = _cpu_read16(&addr);
                 regs.ip = _cpu_read16(&addr);
             }
-            add_instr_length = false;
+            add_instr_length = 0;
             break;
         case mnem_ret:
             regs.ip = _cpu_pop();
-            add_instr_length = false;
+            add_instr_length = 0;
             break;
         case mnem_retf:
             regs.ip = _cpu_pop();
             regs.cs = _cpu_pop();
-            add_instr_length = false;
+            add_instr_length = 0;
             break;
 
         case mnem_inc: {
@@ -694,8 +722,8 @@ void cpu_run(void) {
         }
 
         default:
-            ESP_LOGE(TAG, "instruction not implemented. halting");
-            while(1);
+            ESP_LOGE(TAG, "instruction not implemented");
+            running = 0;
     }
 
     #undef RDOP_8
@@ -704,10 +732,51 @@ void cpu_run(void) {
     #undef RDOP_16
 
     // print state after instruction
-    #ifdef TRACE_VCPU
-    cpu_print_state();
-    #endif
+    if(trace)
+        cpu_print_state();
 
     if(add_instr_length)
         regs.ip += instr.length;
+}
+
+void cpu_loop(void) {
+    while(1) {
+        if(running || xSemaphoreTake(single_steps, 0))
+            cpu_step();
+    }
+}
+
+// Debugging functions
+
+void cpu_set_running(uint8_t val) {
+    ESP_LOGI(TAG, "%s", val ? "running" : "stopped");
+    running = val;
+}
+uint8_t cpu_running(void) {
+    return running;
+}
+void cpu_single_step(uint8_t steps) {
+    for(int i = 0; i < steps; i++)
+        xSemaphoreGive(single_steps);
+}
+void cpu_set_trace(uint8_t val) {
+    ESP_LOGI(TAG, "tracing %s", val ? "enabled" : "disabled");
+    trace = val;
+}
+uint8_t cpu_trace(void) {
+    return trace;
+}
+uint8_t cpu_breakpoint(uint16_t cs, uint16_t ip) {
+    ESP_LOGI(TAG, "inserted breakpoint at %04x:%04x", cs, ip);
+    // find unused slot
+    for(int i = 0; i < CPU_MAX_BREAKPOINTS; i++) {
+        if(!breakpoints[i].active) {
+            breakpoints[i].cs = cs;
+            breakpoints[i].ip = ip;
+            breakpoints[i].active = 1;
+            return i;
+        }
+    }
+    ESP_LOGE(TAG, "no breakpoint slots left");
+    return -1;
 }

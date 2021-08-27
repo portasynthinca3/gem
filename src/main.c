@@ -9,8 +9,8 @@
 #define TAG "main"
 
 void main_task(void* param) {
-    while(1)
-        cpu_run();
+    cpu_repl_init();
+    cpu_loop();
 }
 
 void app_main(void) {

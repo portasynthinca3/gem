@@ -4,7 +4,7 @@
 // Operation: https://dsearls.org/courses/C391OrgSys/IntelAL/8086_instruction_set.html#JC
 
 // Okay, lets talk about the architecture of this code for a bit.
-// The 8086 emulator is split into three files:
+// The 8086 emulator is split into four files:
 //  - cpu_fetch.c
 //    It is doing all the fetching and decoding work. Its main point of interest is the cpu_fetch_decode
 //    function. It fetches an instruction and represents it using internal structs much like a human would
@@ -30,6 +30,8 @@
 //    Executes what the decoder has represented. Easy, right?
 //  - cpu_disasm.c
 //    Prints what the decoder has represented. Very easy, right?
+//  - cpu_repl.c
+//    Provides the UART REPL to debug the CPU or the program running on it
 
 #include "cpu.h"
 #include "machine.h"

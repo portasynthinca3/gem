@@ -4,8 +4,8 @@
 
 // Definitions
 
-#define TRACE_MEM_ACCESS
-#define TRACE_IO_ACCESS
+// #define TRACE_MEM_ACCESS
+// #define TRACE_IO_ACCESS
 
 #define BIOS_START 0xfe000
 #define RAM_SIZE   64 * 1024
