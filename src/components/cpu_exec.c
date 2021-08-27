@@ -408,7 +408,7 @@ void cpu_reset(void) {
 
     // create single-step semaphore
     if(single_steps == NULL)
-        single_steps = xSemaphoreCreateCounting(10000, 0);
+        single_steps = xSemaphoreCreateCounting(UINT32_MAX, 0);
 }
 
 void cpu_print_state(void) {
@@ -437,7 +437,8 @@ void cpu_step(void) {
         if(breakpoints[i].active && breakpoints[i].cs == regs.cs && breakpoints[i].ip == regs.ip) {
             running = 0;
             trace = 1;
-            breakpoints[i].active = 0;
+            ESP_LOGI(TAG, "breakpoint %d hit", i);
+            break;
         }
     }
     #endif
@@ -727,6 +728,8 @@ void cpu_step(void) {
 
         default:
             ESP_LOGE(TAG, "instruction not implemented");
+            ESP_LOGE(TAG, "CPU state:");
+            cpu_print_state();
             running = 0;
     }
 
@@ -756,31 +759,51 @@ void cpu_set_running(uint8_t val) {
     ESP_LOGI(TAG, "%s", val ? "running" : "stopped");
     running = val;
 }
+
 uint8_t cpu_running(void) {
     return running;
 }
-void cpu_single_step(uint8_t steps) {
-    for(int i = 0; i < steps; i++)
+
+void cpu_single_step(uint32_t steps) {
+    for(uint32_t i = 0; i < steps; i++)
         xSemaphoreGive(single_steps);
 }
+
 void cpu_set_trace(uint8_t val) {
     ESP_LOGI(TAG, "tracing %s", val ? "enabled" : "disabled");
     trace = val;
 }
+
 uint8_t cpu_trace(void) {
     return trace;
 }
+
 uint8_t cpu_breakpoint(uint16_t cs, uint16_t ip) {
-    ESP_LOGI(TAG, "inserted breakpoint at %04x:%04x", cs, ip);
     // find unused slot
     for(int i = 0; i < CPU_MAX_BREAKPOINTS; i++) {
         if(!breakpoints[i].active) {
             breakpoints[i].cs = cs;
             breakpoints[i].ip = ip;
             breakpoints[i].active = 1;
+            ESP_LOGI(TAG, "inserted breakpoint at %04x:%04x (id %d)", cs, ip, i);
             return i;
         }
     }
     ESP_LOGE(TAG, "no breakpoint slots left");
     return -1;
+}
+
+void cpu_del_breakpoint(uint8_t num) {
+    breakpoints[num].active = 0;
+    ESP_LOGI(TAG, "breakpoint remved (id %d)", num);
+}
+
+void cpu_list_breakpoints(void) {
+    for(int i = 0; i < CPU_MAX_BREAKPOINTS; i++)
+        if(breakpoints[i].active)
+            ESP_LOGI(TAG, "breakpoint %d at %04x:%04x", i, breakpoints[i].cs, breakpoints[i].ip);
+}
+
+cpu_regs_t cpu_state(void) {
+    return regs;
 }

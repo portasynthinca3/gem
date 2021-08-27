@@ -175,12 +175,15 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr);
 void        cpu_instr_sprint(cpu_instr_t instr, char* buf);
 void        cpu_disasm      (uint32_t start, int32_t len);
 
-void    cpu_print_state(void);
-void    cpu_set_running(uint8_t val);
-void    cpu_single_step(uint8_t steps);
-uint8_t cpu_running    (void);
-void    cpu_set_trace  (uint8_t val);
-uint8_t cpu_trace      (void);
-uint8_t cpu_breakpoint (uint16_t cs, uint16_t ip);
+void       cpu_print_state     (void);
+void       cpu_set_running     (uint8_t val);
+void       cpu_single_step     (uint32_t steps);
+uint8_t    cpu_running         (void);
+void       cpu_set_trace       (uint8_t val);
+uint8_t    cpu_trace           (void);
+uint8_t    cpu_breakpoint      (uint16_t cs, uint16_t ip);
+void       cpu_del_breakpoint  (uint8_t num);
+void       cpu_list_breakpoints(void);
+cpu_regs_t cpu_state           (void);
 
 void cpu_repl_init(void);
