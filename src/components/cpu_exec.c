@@ -468,14 +468,12 @@ void cpu_run(void) {
                 WRITE_FLAG(FLAG_AF, 0);
                 WRITE_FLAG(FLAG_CF, 0);
             }
+
             break;
         case mnem_aad:
             regs.al = (regs.ah * 10) + regs.al;
             regs.ah = 0;
-            break;
-        case mnem_aam:
-            regs.ah = regs.al / 10;
-            regs.al = regs.al % 10;
+            _cpu_set_szp(0, regs.al);
             break;
         case mnem_aas:
             if((regs.al & 4) > 9 || READ_FLAG(FLAG_AF)) {
@@ -487,6 +485,33 @@ void cpu_run(void) {
                 WRITE_FLAG(FLAG_AF, 0);
                 WRITE_FLAG(FLAG_CF, 0);
             }
+            break;
+        case mnem_aam:
+            regs.ah = regs.al / 10;
+            regs.al = regs.al % 10;
+            _cpu_set_szp(0, regs.al);
+            break;
+        case mnem_daa:
+            if((regs.al & 4) > 9 || READ_FLAG(FLAG_AF)) {
+                regs.al += 6;
+                WRITE_FLAG(FLAG_AF, 1);
+            }
+            if(regs.al > 0x9f || READ_FLAG(FLAG_CF)) {
+                regs.al += 0x60;
+                WRITE_FLAG(FLAG_CF, 1);
+            }
+            _cpu_set_szp(0, regs.al);
+            break;
+        case mnem_das:
+            if((regs.al & 4) > 9 || READ_FLAG(FLAG_AF)) {
+                regs.al -= 6;
+                WRITE_FLAG(FLAG_AF, 1);
+            }
+            if(regs.al > 0x9f || READ_FLAG(FLAG_CF)) {
+                regs.al -= 0x60;
+                WRITE_FLAG(FLAG_CF, 1);
+            }
+            _cpu_set_szp(0, regs.al);
             break;
         
         case mnem_adc:
@@ -577,6 +602,9 @@ void cpu_run(void) {
 
         case mnem_cbw:
             regs.ah = (regs.al & 0x80) ? 255 : 0;
+            break;
+        case mnem_cwd:
+            regs.dx = (regs.ax & 0x8000) ? 0xffff : 0;
             break;
 
         case mnem_cmpsb:
