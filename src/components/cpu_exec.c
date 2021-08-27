@@ -200,6 +200,16 @@ int32_t _cpu_opwr16(cpu_operand_t op, cpu_segm_override_t so, int32_t val) {
     }
 }
 
+inline void _cpu_push(uint16_t val) {
+    regs.sp -= 2;
+    _cpu_write16((uint32_t)regs.ss << 4 + regs.sp, val);
+}
+inline uint16_t _cpu_pop() {
+    uint16_t val = _cpu_read16((uint32_t)regs.ss << 4 + regs.sp);
+    regs.sp += 2;
+    return val;
+}
+
 inline uint8_t _cpu_parity(uint8_t w, uint32_t val) {
     uint8_t ones = 0;
     for(int i = 0; i < (w ? 16 : 8); i++) {
@@ -245,6 +255,7 @@ inline void _cpu_execute_jump(cpu_instr_t instr) {
         regs.ip += instr.length;
         return;
     }
+
     // perform the jump
     if(instr.oper1.type == operand_imm8) // rel8
         regs.ip += instr.length + *(int8_t*)&instr.oper1.imm8;
@@ -253,6 +264,10 @@ inline void _cpu_execute_jump(cpu_instr_t instr) {
     else if(instr.oper1.type == operand_mem8) { // segm16:offs16
         regs.cs = instr.oper1.mem.far_segm;
         regs.ip = instr.oper1.mem.far_offs;
+    } else if(instr.oper1.type == operand_far_at_location) { // jumptable
+        uint32_t addr = _cpu_effective_addr(instr.oper1.mem, instr.so);
+        regs.cs = _cpu_read16(addr);
+        regs.ip = _cpu_read16(addr);
     }
 }
 
@@ -349,6 +364,15 @@ inline uint32_t _cpu_sar(uint32_t val, uint8_t amt, uint8_t w) {
         WRITE_FLAG(FLAG_OF, 0);
     _cpu_set_szp(w, val);
     return val;
+}
+
+inline uint32_t _cpu_sub(uint32_t a, uint32_t b, uint8_t w) {
+    uint8_t c1 = a >> (W_BITS(w) - 1);
+    uint8_t c2 = b >> (W_BITS(w) - 1);
+    uint16_t result = a - b;
+    _cpu_set_szp(w, result);
+    uint8_t c3 = result >> (W_BITS(w) - 1);
+    WRITE_FLAG(FLAG_OF, c1 != c2 && c3 != c1);
 }
 
 // Public functions
@@ -479,30 +503,17 @@ void cpu_run(void) {
             break;
         }
         case mnem_sbb:
-        case mnem_sub: {
-            uint16_t result;
-            uint8_t c1 = (w ? RDOP_16(1) : RDOP_8(1)) >> (W_BITS(w) - 1);
-            uint8_t c2 = (w ? RDOP_16(1) : RDOP_8(1)) >> (W_BITS(w) - 1);
-            uint8_t borrow = (instr.mnemonic == mnem_sbb) ? READ_FLAG(FLAG_CF) : 0;
-            if(w) result = WROP_16(1, RDOP_16(1) - RDOP_16(2)) - borrow;
-            else  result = WROP_8(1, RDOP_8(1) - RDOP_8(2)) - borrow;
-            _cpu_set_szp(w, result);
-            uint8_t c3 = result >> (W_BITS(w) - 1);
-            WRITE_FLAG(FLAG_OF, c1 != c2 && c3 != c1);
+            if(w) WROP_16(1, _cpu_sub(RDOP_16(1), RDOP_16(2) - READ_FLAG(FLAG_CF), w));
+            else  WROP_8(1, _cpu_sub(RDOP_8(1), RDOP_8(2) - READ_FLAG(FLAG_CF), w));
             break;
-        }
-        case mnem_cmp: {
-            uint16_t result;
-            uint8_t c1 = (w ? RDOP_16(1) : RDOP_8(1)) >> (W_BITS(w) - 1);
-            uint8_t c2 = (w ? RDOP_16(1) : RDOP_8(1)) >> (W_BITS(w) - 1);
-            uint8_t borrow = (instr.mnemonic == mnem_sbb) ? READ_FLAG(FLAG_CF) : 0;
-            if(w) result = RDOP_16(1) - RDOP_16(2) - borrow;
-            else  result = RDOP_8(1) - RDOP_8(2) - borrow;
-            _cpu_set_szp(w, result);
-            uint8_t c3 = result >> (W_BITS(w) - 1);
-            WRITE_FLAG(FLAG_OF, c1 != c2 && c3 != c1);
+        case mnem_sub:
+            if(w) WROP_16(1, _cpu_sub(RDOP_16(1), RDOP_16(2), w));
+            else  WROP_8(1, _cpu_sub(RDOP_8(1), RDOP_8(2), w));
             break;
-        }
+        case mnem_cmp: 
+            if(w) _cpu_sub(RDOP_16(1), RDOP_16(2), w);
+            else  _cpu_sub(RDOP_8(1), RDOP_8(2), w);
+            break;
         case mnem_and:
             if(w) _cpu_set_szp(w, WROP_16(1, RDOP_16(1) & RDOP_16(2)));
             else  _cpu_set_szp(w, WROP_8(1, RDOP_8(1) & RDOP_8(2)));
@@ -565,7 +576,57 @@ void cpu_run(void) {
             break;
 
         case mnem_cbw:
-            regs.ah = (regs.al >> 7) ? 255 : 0;
+            regs.ah = (regs.al & 0x80) ? 255 : 0;
+            break;
+
+        case mnem_cmpsb:
+        case mnem_cmpsw:
+            do {
+                uint32_t ds_si = ((uint32_t)regs.ds << 4) + regs.si;
+                uint32_t es_di = ((uint32_t)regs.es << 4) + regs.di;
+                if(w) _cpu_sub(_cpu_read16(ds_si), _cpu_read16(es_di), w);
+                else  _cpu_sub(READ(ds_si), READ(es_di), w);
+                if(READ_FLAG(FLAG_DF)) {
+                    regs.si -= w + 1;
+                    regs.di -= w + 1;
+                } else {
+                    regs.si += w + 1;
+                    regs.di += w + 1;
+                }
+            // stopping conditions:
+            // 1. instruction is prefixed neither by REP/REPE nor REPNE (single-shot)
+            // 2. --CX is zero if prefixed by either REP/REPE or REPNE
+            // 3. ZF = 0 if prefixed by REP/REPE
+            // 4. ZF = 1 if prefixed by REPNE
+            } while(instr.rp == rp_no || (--regs.cx && READ_FLAG(FLAG_ZF) == (instr.rp == rp_rep)));
+            break;
+
+        case mnem_call:
+            if(instr.oper1.type == operand_imm16) { // rel16
+                _cpu_push(regs.ip);
+                regs.ip += instr.length + *(int16_t*)&instr.oper1.imm16;
+            } else if(instr.oper1.type == operand_mem8) { // segm16:offs16
+                _cpu_push(regs.cs);
+                _cpu_push(regs.ip);
+                regs.cs = instr.oper1.mem.far_segm;
+                regs.ip = instr.oper1.mem.far_offs;
+            } else if(instr.oper1.type == operand_far_at_location) { // jumptable (calltable?)
+                _cpu_push(regs.cs);
+                _cpu_push(regs.ip);
+                uint32_t addr = _cpu_effective_addr(instr.oper1.mem, instr.so);
+                regs.cs = _cpu_read16(addr);
+                regs.ip = _cpu_read16(addr);
+            }
+            add_instr_length = false;
+            break;
+        case mnem_ret:
+            regs.ip = _cpu_pop();
+            add_instr_length = false;
+            break;
+        case mnem_retf:
+            regs.ip = _cpu_pop();
+            regs.cs = _cpu_pop();
+            add_instr_length = false;
             break;
 
         default:

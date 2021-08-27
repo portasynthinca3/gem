@@ -133,23 +133,19 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
     do {
         op = READ(addr++);
         switch(op) {
-            case 0xf3: instr.rep   = 1;  break;
-            case 0xf2: instr.repne = 1;  break;
-            case 0xf0: instr.lock  = 1;  break;
-            case 0x2e: instr.so = so_cs; break; //
-            case 0x3e: instr.so = so_ds; break; // segment overrides
-            case 0x26: instr.so = so_es; break; //
-            case 0x36: instr.so = so_ss; break; //
+            case 0xf3: instr.rp = rp_rep;   break; //
+            case 0xf2: instr.rp = rp_repne; break; // REP prefixes
+            case 0xf0: instr.lock  = 1;     break; 
+            case 0x2e: instr.so = so_cs;    break; //
+            case 0x3e: instr.so = so_ds;    break; // segment overrides
+            case 0x26: instr.so = so_es;    break; //
+            case 0x36: instr.so = so_ss;    break; //
             default: prefix = 0;
         }
     } while(prefix);
     // split out bits D and W
     uint8_t d = (op >> 1) & 1;
     uint8_t w = op & 1;
-
-    // check for simultaneous REP and REPNE
-    uint8_t rep_cnt = instr.rep + instr.repne;
-    if(rep_cnt > 1) instr.valid = 0;
 
     // 500-line switch incoming!!!!
     switch(op) {

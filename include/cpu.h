@@ -91,13 +91,19 @@ typedef enum {
     so_ds, so_cs, so_ss, so_es
 } cpu_segm_override_t;
 
+// REP prefixes
+typedef enum {
+    rp_no, rp_rep, rp_repne
+} cpu_rep_prefix_t;
+
 // Instruction
 typedef struct {
     // meta
     uint8_t length, valid:1;
 
     // prefixes
-    uint8_t rep:1, repne:1, lock:1;
+    uint8_t lock:1;
+    cpu_rep_prefix_t rp;
     cpu_segm_override_t so;
 
     // instruction itself
