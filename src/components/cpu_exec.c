@@ -658,16 +658,16 @@ void cpu_step(void) {
 
         case mnem_call:
             if(instr.oper1.type == operand_imm16) { // rel16
-                _cpu_push(regs.ip);
+                _cpu_push(regs.ip + instr.length);
                 regs.ip += instr.length + *(int16_t*)&instr.oper1.imm16;
             } else if(instr.oper1.type == operand_mem8) { // segm16:offs16
                 _cpu_push(regs.cs);
-                _cpu_push(regs.ip);
+                _cpu_push(regs.ip + instr.length);
                 regs.cs = instr.oper1.mem.far_segm;
                 regs.ip = instr.oper1.mem.far_offs;
             } else if(instr.oper1.type == operand_far_at_location) { // jumptable (calltable?)
                 _cpu_push(regs.cs);
-                _cpu_push(regs.ip);
+                _cpu_push(regs.ip + instr.length);
                 uint32_t addr = _cpu_effective_addr(instr.oper1.mem, instr.so);
                 regs.cs = _cpu_read16(&addr);
                 regs.ip = _cpu_read16(&addr);
@@ -676,10 +676,14 @@ void cpu_step(void) {
             break;
         case mnem_ret:
             regs.ip = _cpu_pop();
+            if(instr.oper1.type == operand_imm16)
+                regs.sp += instr.oper1.imm16;
             add_instr_length = 0;
             break;
         case mnem_retf:
             regs.ip = _cpu_pop();
+            if(instr.oper1.type == operand_imm16)
+                regs.sp += instr.oper1.imm16;
             regs.cs = _cpu_pop();
             add_instr_length = 0;
             break;

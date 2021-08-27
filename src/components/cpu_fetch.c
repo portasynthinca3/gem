@@ -596,9 +596,9 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
             instr.oper2 = IMM16_OPERAND(_cpu_read16(&addr));
             break;
 
-        case 0xc2: // ret imm8
+        case 0xc2: // ret imm16
             instr.mnemonic = mnem_ret;
-            instr.oper1 = IMM8_OPERAND(READ(addr++));
+            instr.oper1 = IMM16_OPERAND(_cpu_read16(&addr));
             instr.oper2 = NO_OPERAND;
             break;
         case 0xc3: // ret
@@ -616,9 +616,9 @@ cpu_instr_t cpu_fetch_decode(uint32_t addr) {
             instr.mnemonic = mnem_mov;
             _cpu_decode_modrm(&addr, 0, w, &instr.oper1, &instr.oper2);
             break;
-        case 0xca: // retf imm8
+        case 0xca: // retf imm16
             instr.mnemonic = mnem_retf;
-            instr.oper1 = IMM8_OPERAND(READ(addr++));
+            instr.oper1 = IMM16_OPERAND(_cpu_read16(&addr));
             instr.oper2 = NO_OPERAND;
             break;
         case 0xcb: // retf
