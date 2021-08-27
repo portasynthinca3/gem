@@ -212,7 +212,7 @@ inline uint16_t _cpu_pop() {
 
 inline uint8_t _cpu_parity(uint8_t w, uint32_t val) {
     uint8_t ones = 0;
-    for(int i = 0; i < (w ? 16 : 8); i++) {
+    for(int i = 0; i < W_BITS(w); i++) {
         if(val & 1) ones++;
         val >>= 1;
     }
@@ -414,6 +414,8 @@ void cpu_run(void) {
     #define RDOP_16(o)    _cpu_oprd16((o == 2) ? instr.oper2 : instr.oper1, instr.so)
     #define WROP_8(o, v)  _cpu_opwr8 ((o == 2) ? instr.oper2 : instr.oper1, instr.so, v)
     #define WROP_16(o, v) _cpu_opwr16((o == 2) ? instr.oper2 : instr.oper1, instr.so, v)
+    #define RDOP(o)    (w ? RDOP_16(o)    : RDOP_8(o))
+    #define WROP(o, v) (w ? WROP_16(o, v) : WROP_8(o, v))
 
     // determine bit size
     uint8_t op1w = _cpu_is_oper_16bit(instr.oper1);
@@ -428,24 +430,15 @@ void cpu_run(void) {
     // execute instruction
     // (another 500-line switch incoming!!!!!!)
     switch(instr.mnemonic) {
-        case mnem_jmp:
-        case mnem_jo:
-        case mnem_jno:
-        case mnem_jc:
-        case mnem_jnc:
-        case mnem_jz:
-        case mnem_jnz:
-        case mnem_jbe:
-        case mnem_ja:
-        case mnem_js:
-        case mnem_jns:
-        case mnem_jp:
-        case mnem_jnp:
-        case mnem_jl:
-        case mnem_jge:
-        case mnem_jle:
-        case mnem_jg:
-        case mnem_jcxz:
+        case mnem_jmp: case mnem_jcxz:
+        case mnem_jo:  case mnem_jno:
+        case mnem_jc:  case mnem_jnc:
+        case mnem_jz:  case mnem_jnz:
+        case mnem_jbe: case mnem_ja:
+        case mnem_js:  case mnem_jns:
+        case mnem_jp:  case mnem_jnp:
+        case mnem_jl:  case mnem_jge:
+        case mnem_jle: case mnem_jg:
             _cpu_execute_jump(instr);
             add_instr_length = 0;
             break;
@@ -520,8 +513,8 @@ void cpu_run(void) {
             uint8_t c1 = (w ? RDOP_16(1) : RDOP_8(1)) >> (W_BITS(w) - 1);
             uint8_t c2 = (w ? RDOP_16(1) : RDOP_8(1)) >> (W_BITS(w) - 1);
             uint8_t carry = (instr.mnemonic == mnem_adc) ? READ_FLAG(FLAG_CF) : 0;
-            if(w) result = WROP_16(1, RDOP_16(1) + RDOP_16(2)) + carry;
-            else  result = WROP_8(1, RDOP_8(1) + RDOP_8(2)) + carry;
+            if(w) result = WROP_16(1, RDOP_16(1) + RDOP_16(2) + carry);
+            else  result = WROP_8(1, RDOP_8(1) + RDOP_8(2) + carry);
             _cpu_set_szp(w, result);
             uint8_t c3 = result >> (W_BITS(w) - 1);
             WRITE_FLAG(FLAG_OF, c1 == c2 && c3 != c1);
@@ -572,32 +565,25 @@ void cpu_run(void) {
             break;
 
         case mnem_shr:
-            if(w) WROP_16(1, _cpu_shr(RDOP_16(1), RDOP_8(2), w));
-            else  WROP_8(1, _cpu_shr(RDOP_8(1), RDOP_8(2), w));
+            WROP(1, _cpu_shr(RDOP(1), RDOP_8(2), w));
             break;
         case mnem_sar:
-            if(w) WROP_16(1, _cpu_sar(RDOP_16(1), RDOP_8(2), w));
-            else  WROP_8(1, _cpu_sar(RDOP_8(1), RDOP_8(2), w));
+            WROP(1, _cpu_sar(RDOP(1), RDOP_8(2), w));
             break;
         case mnem_shl:
-            if(w) WROP_16(1, _cpu_shl(RDOP_16(1), RDOP_8(2), w));
-            else  WROP_8(1, _cpu_shl(RDOP_8(1), RDOP_8(2), w));
+            WROP(1, _cpu_shl(RDOP(1), RDOP_8(2), w));
             break;
         case mnem_rol:
-            if(w) WROP_16(1, _cpu_rol(RDOP_16(1), RDOP_8(2), w));
-            else  WROP_8(1, _cpu_rol(RDOP_8(1), RDOP_8(2), w));
+            WROP(1, _cpu_rol(RDOP(1), RDOP_8(2), w));
             break;
         case mnem_rcl:
-            if(w) WROP_16(1, _cpu_rcl(RDOP_16(1), RDOP_8(2), w));
-            else  WROP_8(1, _cpu_rcl(RDOP_8(1), RDOP_8(2), w));
+            WROP(1, _cpu_rcl(RDOP(1), RDOP_8(2), w));
             break;
         case mnem_ror:
-            if(w) WROP_16(1, _cpu_ror(RDOP_16(1), RDOP_8(2), w));
-            else  WROP_8(1, _cpu_ror(RDOP_8(1), RDOP_8(2), w));
+            WROP(1, _cpu_ror(RDOP(1), RDOP_8(2), w));
             break;
         case mnem_rcr:
-            if(w) WROP_16(1, _cpu_rcr(RDOP_16(1), RDOP_8(2), w));
-            else  WROP_8(1, _cpu_rcr(RDOP_8(1), RDOP_8(2), w));
+            WROP(1, _cpu_rcr(RDOP(1), RDOP_8(2), w));
             break;
 
         case mnem_cbw:
@@ -656,6 +642,24 @@ void cpu_run(void) {
             regs.cs = _cpu_pop();
             add_instr_length = false;
             break;
+
+        case mnem_inc: {
+            uint16_t result;
+            uint8_t c1 = RDOP(1) >> (W_BITS(w) - 1);
+            uint16_t result = WROP(1, RDOP(1) + 1);
+            _cpu_set_szp(w, result);
+            uint8_t c3 = result >> (W_BITS(w) - 1);
+            WRITE_FLAG(FLAG_OF, c1 == 0 && c3 != c1);
+            break;
+        }
+        case mnem_dec: {
+            uint8_t c1 = RDOP(1) >> (W_BITS(w) - 1);
+            uint16_t result = WROP(1, RDOP(1) - 1);
+            _cpu_set_szp(w, result);
+            uint8_t c3 = result >> (W_BITS(w) - 1);
+            WRITE_FLAG(FLAG_OF, c1 != 0 && c3 != c1);
+            break;
+        }
 
         default:
             ESP_LOGE(TAG, "instruction is not implemented. halting");
