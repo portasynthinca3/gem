@@ -275,9 +275,9 @@ static inline void _cpu_execute_jump(cpu_instr_t instr) {
 
     // perform the jump
     if(instr.oper1.type == operand_imm8) // rel8
-        regs.ip += instr.length + _cpu_sx(*(int8_t*)&instr.oper1.imm8);
+        regs.ip += instr.length + _cpu_sx((int8_t)instr.oper1.imm8);
     else if(instr.oper1.type == operand_imm16) // rel16
-        regs.ip += instr.length + *(int16_t*)&instr.oper1.imm16;
+        regs.ip += instr.length + (int16_t)instr.oper1.imm16;
     else if(instr.oper1.type == operand_mem8) { // segm16:offs16
         regs.cs = instr.oper1.mem.far_segm;
         regs.ip = instr.oper1.mem.far_offs;
@@ -592,6 +592,36 @@ void cpu_step(void) {
         case mnem_sub:
             WROP(1, _cpu_sub(RDOP(1), RDOP(2), w));
             break;
+        case mnem_mul: {
+            uint8_t overflow = 0;
+            if(w) {
+                uint32_t res = (uint32_t)regs.ax * (uint32_t)RDOP_16(1);
+                regs.dx = res >> 16;
+                regs.ax = res & 0xfff;
+                overflow = regs.dx > 0;
+            } else {
+                regs.ax = (uint16_t)regs.al * (uint16_t)RDOP_8(1);
+                overflow = regs.ax & 0xff00 > 0;
+            }
+            WRITE_FLAG(FLAG_OF, overflow);
+            WRITE_FLAG(FLAG_CF, overflow);
+            break;
+        }
+        case mnem_imul: {
+            uint8_t overflow = 0;
+            if(w) {
+                uint32_t res = (uint32_t)((int32_t)(int16_t)regs.ax * RDOP_16(1));
+                regs.dx = res >> 16;
+                regs.ax = res & 0xfff;
+                overflow = (res & 0x80000000) ? (regs.dx != 0xffff) : (regs.dx != 0);
+            } else {
+                regs.ax = (int16_t)(int8_t)regs.al * (int16_t)RDOP_8(1);
+                overflow = (regs.ax & 0x8000) ? (regs.ah != 0xff) : (regs.ah != 0);
+            }
+            WRITE_FLAG(FLAG_OF, overflow);
+            WRITE_FLAG(FLAG_CF, overflow);
+            break;
+        }
         case mnem_cmp: 
             _cpu_sub(RDOP(1), RDOP(2), w);
             break;
@@ -818,7 +848,7 @@ void cpu_step(void) {
             else if(instr.mnemonic == mnem_loopnz)
                 should_jump = should_jump && !READ_FLAG(FLAG_ZF);
             if(should_jump) {
-                regs.ip += instr.length + _cpu_sx(*(int8_t*)&instr.oper1.imm8);
+                regs.ip += instr.length + _cpu_sx((int8_t)instr.oper1.imm8);
                 add_instr_length = 0;
             }
             break;
