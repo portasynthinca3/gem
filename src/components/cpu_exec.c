@@ -592,6 +592,14 @@ void cpu_step(void) {
         case mnem_not:
             WROP(1, ~RDOP(1));
             break;
+        case mnem_neg: {
+            uint8_t c2 = RDOP(1) >> (W_BITS(w) - 1);
+            uint16_t result = -RDOP(1);
+            _cpu_set_szp(w, result);
+            uint8_t c3 = result >> (W_BITS(w) - 1);
+            WRITE_FLAG(FLAG_OF, 0 != c2 && c3 != 0);
+            break;
+        }
 
         case mnem_lahf:
             regs.ah = regs.flags & 0xff;
@@ -635,6 +643,55 @@ void cpu_step(void) {
             regs.dx = (regs.ax & 0x8000) ? 0xffff : 0;
             break;
 
+        case mnem_movsb:
+        case mnem_movsw:
+            do {
+                uint32_t ds_si = ((uint32_t)regs.ds << 4) + regs.si;
+                uint32_t es_di = ((uint32_t)regs.es << 4) + regs.di;
+                if(w) _cpu_write16(&es_di, _cpu_read_16(&ds_si));
+                else  WRITE(es_di, READ(ds_si));
+                if(READ_FLAG(FLAG_DF)) {
+                    regs.si -= w + 1;
+                    regs.di -= w + 1;
+                } else {
+                    regs.si += w + 1;
+                    regs.di += w + 1;
+                }
+            // stopping conditions:
+            // 1. instruction isn't prefixed by REP
+            // 2. --CX is zero if prefixed by either REP
+            } while(instr.rp == rp_no || --regs.cx);
+            break;
+        case mnem_lodsb:
+        case mnem_lodsw:
+            do {
+                uint32_t ds_si = ((uint32_t)regs.ds << 4) + regs.si;
+                if(w) regs.ax = _cpu_read16(ds_si);
+                else  regs.al = READ(ds_si);
+                if(READ_FLAG(FLAG_DF))
+                    regs.si -= w + 1;
+                else
+                    regs.si += w + 1;
+            // stopping conditions:
+            // 1. instruction isn't prefixed by REP
+            // 2. --CX is zero if prefixed by either REP
+            } while(instr.rp == rp_no || --regs.cx);
+            break;
+        case mnem_stosb:
+        case mnem_stosw:
+            do {
+                uint32_t es_di = ((uint32_t)regs.es << 4) + regs.di;
+                if(w) _cpu_write16(es_di, regs.ax);
+                else  WRITE(es_di, regs.al);
+                if(READ_FLAG(FLAG_DF))
+                    regs.si -= w + 1;
+                else
+                    regs.si += w + 1;
+            // stopping conditions:
+            // 1. instruction isn't prefixed by REP
+            // 2. --CX is zero if prefixed by either REP
+            } while(instr.rp == rp_no || --regs.cx);
+            break;
         case mnem_cmpsb:
         case mnem_cmpsw:
             do {
@@ -654,7 +711,24 @@ void cpu_step(void) {
             // 2. --CX is zero if prefixed by either REP/REPE or REPNE
             // 3. ZF = 0 if prefixed by REP/REPE
             // 4. ZF = 1 if prefixed by REPNE
-            } while(instr.rp == rp_no || (--regs.cx && READ_FLAG(FLAG_ZF) == (instr.rp == rp_rep)));
+            } while(instr.rp == rp_no || (--regs.cx && (!READ_FLAG(FLAG_ZF) == !(instr.rp == rp_rep))));
+            break;
+        case mnem_scasb:
+        case mnem_scasw:
+            do {
+                uint32_t ds_si = ((uint32_t)regs.ds << 4) + regs.si;
+                if(w) _cpu_sub(regs.ax, _cpu_read16(ds_si), w);
+                else  _cpu_sub(regs.al, READ(ds_si), w);
+                if(READ_FLAG(FLAG_DF))
+                    regs.si -= w + 1;
+                else
+                    regs.si += w + 1;
+            // stopping conditions:
+            // 1. instruction is prefixed neither by REP/REPE nor REPNE (single-shot)
+            // 2. --CX is zero if prefixed by either REP/REPE or REPNE
+            // 3. ZF = 0 if prefixed by REP/REPE
+            // 4. ZF = 1 if prefixed by REPNE
+            } while(instr.rp == rp_no || (--regs.cx && (!READ_FLAG(FLAG_ZF) == !(instr.rp == rp_rep))));
             break;
 
         case mnem_call:

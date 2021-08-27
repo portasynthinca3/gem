@@ -30,9 +30,6 @@ void _machine_mem_wr(uint32_t addr, uint8_t val) {
         *(main_ram + addr) = val;
         return;
     }
-
-    // dead memory
-    return;
 }
 
 void _machine_io_wr8(uint16_t port, uint8_t val) {
