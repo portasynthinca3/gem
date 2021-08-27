@@ -43,9 +43,11 @@ void _machine_io_wr16(uint16_t port, uint16_t val) {
 }
 uint8_t _machine_io_rd8(uint16_t port) {
     // TODO
+    return 0;
 }
 uint16_t _machine_io_rd16(uint16_t port) {
     // TODO
+    return 0;
 }
 
 // Public functions

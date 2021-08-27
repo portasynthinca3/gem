@@ -191,9 +191,11 @@ int32_t _cpu_opwr16(cpu_operand_t op, cpu_segm_override_t so, int32_t val) {
         case operand_mem8:
             ESP_LOGE(TAG, "wrong memory size");
             return 0;
-        case operand_mem16:
-            _cpu_write16(_cpu_effective_addr(op.mem, so), val);
+        case operand_mem16: {
+            uint32_t addr = _cpu_effective_addr(op.mem, so);
+            _cpu_write16(&addr, val);
             return val;
+        }
         default:
             ESP_LOGE(TAG, "illegal operand type");
             return 0;
@@ -202,10 +204,12 @@ int32_t _cpu_opwr16(cpu_operand_t op, cpu_segm_override_t so, int32_t val) {
 
 inline void _cpu_push(uint16_t val) {
     regs.sp -= 2;
-    _cpu_write16((uint32_t)regs.ss << 4 + regs.sp, val);
+    uint32_t addr = ((uint32_t)regs.ss << 4) + regs.sp;
+    _cpu_write16(&addr, val);
 }
 inline uint16_t _cpu_pop() {
-    uint16_t val = _cpu_read16((uint32_t)regs.ss << 4 + regs.sp);
+    uint32_t addr = ((uint32_t)regs.ss << 4) + regs.sp;
+    uint16_t val = _cpu_read16(&addr);
     regs.sp += 2;
     return val;
 }
@@ -266,8 +270,8 @@ inline void _cpu_execute_jump(cpu_instr_t instr) {
         regs.ip = instr.oper1.mem.far_offs;
     } else if(instr.oper1.type == operand_far_at_location) { // jumptable
         uint32_t addr = _cpu_effective_addr(instr.oper1.mem, instr.so);
-        regs.cs = _cpu_read16(addr);
-        regs.ip = _cpu_read16(addr);
+        regs.cs = _cpu_read16(&addr);
+        regs.ip = _cpu_read16(&addr);
     }
 }
 
@@ -373,6 +377,7 @@ inline uint32_t _cpu_sub(uint32_t a, uint32_t b, uint8_t w) {
     _cpu_set_szp(w, result);
     uint8_t c3 = result >> (W_BITS(w) - 1);
     WRITE_FLAG(FLAG_OF, c1 != c2 && c3 != c1);
+    return result;
 }
 
 // Public functions
@@ -420,7 +425,9 @@ void cpu_run(void) {
     // determine bit size
     uint8_t op1w = _cpu_is_oper_16bit(instr.oper1);
     uint8_t op2w = _cpu_is_oper_16bit(instr.oper2);
-    if(instr.oper2.type != operand_no && op1w != op2w)
+    if((instr.oper2.type != operand_no && op1w != op2w)
+            && instr.mnemonic != mnem_in
+            && instr.mnemonic != mnem_out)
         ESP_LOGW(TAG, "operand 1 width != operand 2 width");
     uint8_t w = op1w;
 
@@ -598,7 +605,7 @@ void cpu_run(void) {
             do {
                 uint32_t ds_si = ((uint32_t)regs.ds << 4) + regs.si;
                 uint32_t es_di = ((uint32_t)regs.es << 4) + regs.di;
-                if(w) _cpu_sub(_cpu_read16(ds_si), _cpu_read16(es_di), w);
+                if(w) _cpu_sub(_cpu_read16(&ds_si), _cpu_read16(&es_di), w);
                 else  _cpu_sub(READ(ds_si), READ(es_di), w);
                 if(READ_FLAG(FLAG_DF)) {
                     regs.si -= w + 1;
@@ -628,8 +635,8 @@ void cpu_run(void) {
                 _cpu_push(regs.cs);
                 _cpu_push(regs.ip);
                 uint32_t addr = _cpu_effective_addr(instr.oper1.mem, instr.so);
-                regs.cs = _cpu_read16(addr);
-                regs.ip = _cpu_read16(addr);
+                regs.cs = _cpu_read16(&addr);
+                regs.ip = _cpu_read16(&addr);
             }
             add_instr_length = false;
             break;
@@ -644,7 +651,6 @@ void cpu_run(void) {
             break;
 
         case mnem_inc: {
-            uint16_t result;
             uint8_t c1 = RDOP(1) >> (W_BITS(w) - 1);
             uint16_t result = WROP(1, RDOP(1) + 1);
             _cpu_set_szp(w, result);
@@ -652,22 +658,22 @@ void cpu_run(void) {
             WRITE_FLAG(FLAG_OF, c1 == 0 && c3 != c1);
             break;
         }
-        case mnem_dec: {
-            uint8_t c1 = RDOP(1) >> (W_BITS(w) - 1);
-            uint16_t result = WROP(1, RDOP(1) - 1);
-            _cpu_set_szp(w, result);
-            uint8_t c3 = result >> (W_BITS(w) - 1);
-            WRITE_FLAG(FLAG_OF, c1 != 0 && c3 != c1);
+        case mnem_dec:
+            WROP(1, _cpu_sub(RDOP(1), 1, w));
             break;
-        }
 
         case mnem_in:
             if(w) WROP(1, machine_io_rd16(RDOP_16(2)));
             else  WROP(1, machine_io_rd8(RDOP_16(2)));
             break;
         case mnem_out:
-            if(w) machine_io_wr16(RDOP_16(2), RDOP(1));
-            else  machine_io_wr8(RDOP_16(2), RDOP(1));
+            if(op2w) machine_io_wr16(RDOP_16(1), RDOP_16(2));
+            else     machine_io_wr8(RDOP_16(1), RDOP_8(2));
+            break;
+
+        case mnem_loop:
+        case mnem_loopz:
+        case mnem_loopnz:
             break;
 
         default:

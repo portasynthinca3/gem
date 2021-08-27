@@ -48,7 +48,7 @@ uint16_t _cpu_read16(uint32_t* addr) {
     return val;
 }
 
-void _cpu_write16(uint32_t addr, uint16_t val) {
-    WRITE(addr, val & 0xff);
-    WRITE(addr + 1, val >> 8);
+void _cpu_write16(uint32_t* addr, uint16_t val) {
+    WRITE((*addr)++, val & 0xff);
+    WRITE((*addr)++, val >> 8);
 }

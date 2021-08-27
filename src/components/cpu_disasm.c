@@ -102,8 +102,8 @@ void cpu_instr_sprint(cpu_instr_t instr, char* buf) {
     _cpu_oper_sprint(instr.oper2, buf2, instr.so);
 
     // prefixes
-    if(instr.rep)   buf += sprintf(buf, "rep ");
-    if(instr.repne) buf += sprintf(buf, "repne ");
+    if(instr.rp == rp_rep)   buf += sprintf(buf, "rep ");
+    if(instr.rp == rp_repne) buf += sprintf(buf, "repne ");
 
     if(strlen(buf1) == 0 && strlen(buf2) == 0) {
         strcpy(buf, instr_names[instr.mnemonic]);

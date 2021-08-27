@@ -155,7 +155,7 @@ typedef struct {
 // Private functions
 
 uint16_t _cpu_read16 (uint32_t* addr);
-void     _cpu_write16(uint32_t addr, uint16_t val);
+void     _cpu_write16(uint32_t* addr, uint16_t val);
 
 // Public functions
 
