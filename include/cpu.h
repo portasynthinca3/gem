@@ -171,6 +171,9 @@ void cpu_reset(void);
 void cpu_step (void);
 void cpu_loop (void);
 
+void cpu_nmi (void);
+void cpu_intr(uint8_t num);
+
 cpu_instr_t cpu_fetch_decode(uint32_t addr);
 void        cpu_instr_sprint(cpu_instr_t instr, char* buf);
 void        cpu_disasm      (uint32_t start, int32_t len);

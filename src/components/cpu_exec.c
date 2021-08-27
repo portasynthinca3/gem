@@ -11,15 +11,12 @@
 
 // CPU state
 
-#ifdef CPU_PAUSED_ON_STARTUP
-static uint8_t running = 0;
-#else
-static uint8_t running = 1;
-#endif
-static uint8_t trace = 0;
+static uint8_t running, halted, trace;
 static cpu_regs_t regs;
 static cpu_brkpnt_t breakpoints[CPU_MAX_BREAKPOINTS];
 static SemaphoreHandle_t single_steps;
+static SemaphoreHandle_t intr_mutex;
+static SemaphoreHandle_t hlt_semaphore;
 
 // Private functions
 
@@ -396,6 +393,16 @@ static inline uint32_t _cpu_sub(uint32_t a, uint32_t b, uint8_t w) {
     return result;
 }
 
+static void _cpu_intr(uint8_t num) {
+    _cpu_push(regs.flags);
+    _cpu_push(regs.cs);
+    _cpu_push(regs.ip);
+    uint32_t addr = num * 4;
+    regs.ip = _cpu_read16(&addr);
+    regs.cs = _cpu_read16(&addr);
+    WRITE_FLAG(FLAG_IF, 0);
+}
+
 // Public functions
 
 void cpu_reset(void) {
@@ -406,9 +413,19 @@ void cpu_reset(void) {
     // reset breakpoints
     memset(breakpoints, 0, sizeof(breakpoints));
 
-    // create single-step semaphore
-    if(single_steps == NULL)
-        single_steps = xSemaphoreCreateCounting(UINT32_MAX, 0);
+    // reset flags
+    #ifdef CPU_PAUSED_ON_STARTUP
+    running = 0;
+    #else
+    running = 1;
+    #endif
+    trace = 0;
+    halted = 0;
+
+    // create semaphores
+    single_steps = xSemaphoreCreateCounting(UINT32_MAX, 0);
+    intr_mutex = xSemaphoreCreateMutex();
+    hlt_semaphore = xSemaphoreCreateBinary();
 }
 
 void cpu_print_state(void) {
@@ -428,6 +445,13 @@ void cpu_print_state(void) {
 }
 
 void cpu_step(void) {
+    // wait for an interrupt if halted
+    if(halted && !xSemaphoreTake(hlt_semaphore, 0))
+        return;
+    halted = 0;
+
+    xSemaphoreTake(intr_mutex, portMAX_DELAY);
+
     // fetch instruction
     cpu_instr_t instr = cpu_fetch_decode((uint32_t)regs.cs << 4 | regs.ip);
 
@@ -848,11 +872,27 @@ void cpu_step(void) {
             regs.al = ((uint32_t)regs.ds << 4) + regs.bx + regs.al;
             break;
 
-        default:
-            ESP_LOGE(TAG, "instruction not implemented");
-            ESP_LOGE(TAG, "CPU state:");
-            cpu_print_state();
-            running = 0;
+        case mnem_hlt:
+            halted = 1;
+            break;
+        case mnem_iret:
+            add_instr_length = 0;
+            regs.ip = _cpu_pop();
+            regs.cs = _cpu_pop();
+            regs.flags = _cpu_pop();
+            break;
+        case mnem_int:
+            regs.ip += instr.length;
+            add_instr_length = 0;
+            _cpu_intr(RDOP_8(1));
+            break;
+        case mnem_into:
+            if(READ_FLAG(FLAG_OF)) {
+                regs.ip += instr.length;
+                add_instr_length = 0;
+                _cpu_intr(4);
+            }
+            break;
     }
 
     #undef RDOP_8
@@ -866,6 +906,27 @@ void cpu_step(void) {
 
     if(add_instr_length)
         regs.ip += instr.length;
+
+    xSemaphoreGive(intr_mutex);
+}
+
+void cpu_nmi(void) {
+    // wait for CPU to finish current cycle
+    xSemaphoreTake(intr_mutex, portMAX_DELAY);
+    if(halted)
+        xSemaphoreGive(hlt_semaphore);
+    _cpu_intr(2);
+    xSemaphoreGive(intr_mutex);
+}
+
+void cpu_intr(uint8_t num) {
+    xSemaphoreTake(intr_mutex, portMAX_DELAY);
+    if(!READ_FLAG(FLAG_IF))
+        return;
+    if(halted)
+        xSemaphoreGive(hlt_semaphore);
+    _cpu_intr(num);
+    xSemaphoreGive(intr_mutex);
 }
 
 void cpu_loop(void) {
