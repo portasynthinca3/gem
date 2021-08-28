@@ -601,7 +601,7 @@ void cpu_step(void) {
                 overflow = regs.dx > 0;
             } else {
                 regs.ax = (uint16_t)regs.al * (uint16_t)RDOP_8(1);
-                overflow = regs.ax & 0xff00 > 0;
+                overflow = (regs.ax & 0xff00) > 0;
             }
             WRITE_FLAG(FLAG_OF, overflow);
             WRITE_FLAG(FLAG_CF, overflow);
@@ -722,7 +722,7 @@ void cpu_step(void) {
             do {
                 uint32_t ds_si = ((uint32_t)regs.ds << 4) + regs.si;
                 uint32_t es_di = ((uint32_t)regs.es << 4) + regs.di;
-                if(w) _cpu_write16(&es_di, _cpu_read_16(&ds_si));
+                if(w) _cpu_write16(&es_di, _cpu_read16(&ds_si));
                 else  WRITE(es_di, READ(ds_si));
                 if(READ_FLAG(FLAG_DF)) {
                     regs.si -= w + 1;
@@ -740,7 +740,7 @@ void cpu_step(void) {
         case mnem_lodsw:
             do {
                 uint32_t ds_si = ((uint32_t)regs.ds << 4) + regs.si;
-                if(w) regs.ax = _cpu_read16(ds_si);
+                if(w) regs.ax = _cpu_read16(&ds_si);
                 else  regs.al = READ(ds_si);
                 if(READ_FLAG(FLAG_DF))
                     regs.si -= w + 1;
@@ -755,7 +755,7 @@ void cpu_step(void) {
         case mnem_stosw:
             do {
                 uint32_t es_di = ((uint32_t)regs.es << 4) + regs.di;
-                if(w) _cpu_write16(es_di, regs.ax);
+                if(w) _cpu_write16(&es_di, regs.ax);
                 else  WRITE(es_di, regs.al);
                 if(READ_FLAG(FLAG_DF))
                     regs.si -= w + 1;
@@ -791,7 +791,7 @@ void cpu_step(void) {
         case mnem_scasw:
             do {
                 uint32_t ds_si = ((uint32_t)regs.ds << 4) + regs.si;
-                if(w) _cpu_sub(regs.ax, _cpu_read16(ds_si), w);
+                if(w) _cpu_sub(regs.ax, _cpu_read16(&ds_si), w);
                 else  _cpu_sub(regs.al, READ(ds_si), w);
                 if(READ_FLAG(FLAG_DF))
                     regs.si -= w + 1;
