@@ -622,6 +622,26 @@ void cpu_step(void) {
             WRITE_FLAG(FLAG_CF, overflow);
             break;
         }
+        case mnem_div:
+            if(w) {
+                uint32_t val = ((uint32_t)regs.dx << 16) | regs.ax;
+                regs.ax = val / RDOP_16(1);
+                regs.dx = val % RDOP_16(1);
+            } else {
+                regs.al = regs.ax / RDOP_8(1);
+                regs.ah = regs.ax % RDOP_8(1);
+            }
+            break;
+        case mnem_idiv:
+            if(w) {
+                int32_t val = (int32_t)(((uint32_t)regs.dx << 16) | regs.ax);
+                regs.ax = val / RDOP_16(1);
+                regs.dx = val % RDOP_16(1);
+            } else {
+                regs.al = (uint8_t)((int16_t)regs.ax / (int16_t)RDOP_8(1));
+                regs.ah = (uint8_t)((int16_t)regs.ax % (int16_t)RDOP_8(1));
+            }
+            break;
         case mnem_cmp: 
             _cpu_sub(RDOP(1), RDOP(2), w);
             break;
