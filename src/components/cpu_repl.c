@@ -44,8 +44,8 @@ static int _cpu_repl_t(int argc, char** argv) {
 }
 
 static struct {
-    struct arg_str* cs;
     struct arg_str* ip;
+    struct arg_str* cs;
     struct arg_end* end;
 } b_args;
 static int _cpu_repl_b(int argc, char** argv) {
@@ -136,8 +136,8 @@ void cpu_repl_init() {
         .func = &_cpu_repl_b,
         .argtable = &b_args
     };
-    b_args.cs = arg_str0(NULL, NULL, "<cs>", "hexadecimal Code Segment register value (set to current if omitted)");
     b_args.ip = arg_str1(NULL, NULL, "<ip>", "hexadecimal Instruction Pointer register value");
+    b_args.cs = arg_str0(NULL, NULL, "<cs>", "hexadecimal Code Segment register value (set to current if omitted)");
     b_args.end = arg_end(1);
     ESP_ERROR_CHECK(esp_console_cmd_register(&b_cmd));
 

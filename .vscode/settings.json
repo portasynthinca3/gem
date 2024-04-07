@@ -16,5 +16,6 @@
         "esp_log.h": "c",
         "stdio.h": "c",
         "semphr.h": "c"
-    }
+    },
+    "idf.adapterTargetName": "esp32"
 }

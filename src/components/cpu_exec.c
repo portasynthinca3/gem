@@ -15,7 +15,6 @@ static uint8_t running, halted, trace;
 static cpu_regs_t regs;
 static cpu_brkpnt_t breakpoints[CPU_MAX_BREAKPOINTS];
 static SemaphoreHandle_t single_steps;
-static SemaphoreHandle_t intr_mutex;
 static SemaphoreHandle_t hlt_semaphore;
 
 // Private functions
@@ -400,7 +399,6 @@ static void _cpu_intr(uint8_t num) {
     uint32_t addr = num * 4;
     regs.ip = _cpu_read16(&addr);
     regs.cs = _cpu_read16(&addr);
-    WRITE_FLAG(FLAG_IF, 0);
 }
 
 // Public functions
@@ -424,7 +422,6 @@ void cpu_reset(void) {
 
     // create semaphores
     single_steps = xSemaphoreCreateCounting(UINT32_MAX, 0);
-    intr_mutex = xSemaphoreCreateMutex();
     hlt_semaphore = xSemaphoreCreateBinary();
 }
 
@@ -449,8 +446,6 @@ void cpu_step(void) {
     if(halted && !xSemaphoreTake(hlt_semaphore, 0))
         return;
     halted = 0;
-
-    xSemaphoreTake(intr_mutex, portMAX_DELAY);
 
     // fetch instruction
     cpu_instr_t instr = cpu_fetch_decode((uint32_t)regs.cs << 4 | regs.ip);
@@ -956,34 +951,28 @@ void cpu_step(void) {
 
     if(add_instr_length)
         regs.ip += instr.length;
-
-    xSemaphoreGive(intr_mutex);
 }
 
 void cpu_nmi(void) {
-    // wait for CPU to finish current cycle
-    xSemaphoreTake(intr_mutex, portMAX_DELAY);
     if(halted)
         xSemaphoreGive(hlt_semaphore);
     _cpu_intr(2);
-    xSemaphoreGive(intr_mutex);
 }
 
-void cpu_intr(uint8_t num) {
-    xSemaphoreTake(intr_mutex, portMAX_DELAY);
+uint8_t cpu_intr(uint8_t num) {
     if(!READ_FLAG(FLAG_IF))
-        return;
+        return 0;
+
     if(halted)
         xSemaphoreGive(hlt_semaphore);
     _cpu_intr(num);
-    xSemaphoreGive(intr_mutex);
+    WRITE_FLAG(FLAG_IF, 0);
+    return 1;
 }
 
-void cpu_loop(void) {
-    while(1) {
-        if(running || xSemaphoreTake(single_steps, 0))
-            cpu_step();
-    }
+void cpu_clock(void) {
+    if(running || xSemaphoreTake(single_steps, 0))
+        cpu_step();
 }
 
 // Debugging functions

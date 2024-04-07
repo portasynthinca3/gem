@@ -169,10 +169,10 @@ void     _cpu_write16(uint32_t* addr, uint16_t val);
 
 void cpu_reset(void);
 void cpu_step (void);
-void cpu_loop (void);
+void cpu_clock(void);
 
-void cpu_nmi (void);
-void cpu_intr(uint8_t num);
+void    cpu_nmi (void);
+uint8_t cpu_intr(uint8_t num);
 
 cpu_instr_t cpu_fetch_decode(uint32_t addr);
 void        cpu_instr_sprint(cpu_instr_t instr, char* buf);

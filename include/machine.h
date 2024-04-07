@@ -5,7 +5,8 @@
 // Definitions
 
 // #define TRACE_MEM_ACCESS
-#define TRACE_IO_ACCESS
+// #define TRACE_IO_ACCESS
+// #define PRINT_IPS
 
 #define BIOS_START 0xfe000
 #define RAM_SIZE   64 * 1024
@@ -25,7 +26,10 @@ uint16_t _machine_io_rd16(uint16_t port);
 
 // Public functions
 
-void    machine_init  (void);
+void machine_init(void);
+void machine_loop(void);
+
+uint32_t machine_get_ips(void);
 
 #ifdef TRACE_MEM_ACCESS
 void    machine_mem_wr(uint32_t addr, uint8_t val);

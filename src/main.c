@@ -10,7 +10,7 @@
 
 void main_task(void* param) {
     cpu_repl_init();
-    cpu_loop();
+    machine_loop();
 }
 
 void app_main(void) {
